@@ -29,11 +29,14 @@ export const PLANNED_COMMANDS: readonly PlannedCommand[] = [
     description: 'Generate, preview, and publish an incremental Jira report.',
     phase: 3,
     configure: (command) =>
-      command.addOption(
-        new Option('-l, --language <code>', 'report language for this run').choices(
-          SUPPORTED_LANGUAGES,
-        ),
-      ),
+      command
+        .addOption(
+          new Option('-l, --language <code>', 'report language for this run').choices(
+            SUPPORTED_LANGUAGES,
+          ),
+        )
+        .option('-i, --issue <key>', 'Jira issue key (default: detected from the branch name)')
+        .option('-b, --base <branch>', 'base branch for the first report of an issue'),
   },
   { name: 'history', description: 'List reports published for the current issue.', phase: 2 },
   {
