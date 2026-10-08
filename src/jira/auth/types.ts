@@ -1,19 +1,23 @@
-import type { Prompter } from '../../installer/prompter';
-
 /**
- * Pluggable Jira authentication. Phase 2 delivers `api-token` (personal use:
- * Jira Cloud email + API token held in the OS credential store). `oauth` is a
- * designed extension point for public distribution; its flow must be verified
- * against Atlassian's current requirements before implementation and must not
- * embed a confidential client secret. See docs/authentication.md.
+ * Pluggable Jira authentication. `api-token` (personal use: Jira Cloud email
+ * + API token held in the OS credential store) is implemented. `oauth` is a
+ * designed extension point for public distribution (see ./oauth.ts and
+ * docs/authentication.md); it must never embed a confidential client secret.
  */
 export type JiraAuthMethod = 'api-token' | 'oauth';
 
 export type JiraAuthStatus =
-  | { state: 'signed-in'; account: { displayName: string; accountId: string }; siteUrl: string }
-  | { state: 'signed-out' }
-  | { state: 'expired'; siteUrl: string }
-  | { state: 'unavailable'; reason: string };
+  | {
+      state: 'signed-in';
+      account: { displayName: string; accountId: string };
+      siteUrl: string;
+    }
+  /** No credential is stored for this connection. */
+  | { state: 'signed-out'; siteUrl: string }
+  /** Jira refused the stored credential (wrong, expired, revoked, or missing scopes). */
+  | { state: 'rejected'; siteUrl: string; reason: string }
+  /** The check could not be completed (no credential store, network failure). */
+  | { state: 'unavailable'; siteUrl?: string; reason: string };
 
 /**
  * Credentials attached to a single Jira request. Only the HTTP client sees
@@ -27,9 +31,9 @@ export interface JiraAuthorization {
 
 export interface JiraAuthProvider {
   readonly method: JiraAuthMethod;
-  status(): Promise<JiraAuthStatus>;
-  /** Interactive sign-in. Validates credentials against Jira before storing them. */
-  login(prompter: Prompter): Promise<JiraAuthStatus>;
+  /** Connection name this provider authenticates. */
+  readonly connection: string;
+  hasCredentials(): Promise<boolean>;
   /** Removes stored credentials. Returns whether anything was removed. */
   logout(): Promise<boolean>;
   /** Returns request authorization, refreshing tokens if the method supports it. */

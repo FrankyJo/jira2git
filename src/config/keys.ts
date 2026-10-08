@@ -2,7 +2,16 @@ import { z } from 'zod';
 import { UsageError } from '../core/errors';
 import { LanguageSchema } from '../localization/languages';
 import { resolveLanguage } from '../localization/resolve';
-import { BranchNameSchema, type ConfigScope, type GlobalConfig, type RepoConfig } from './schema';
+import {
+  BranchNameSchema,
+  ConnectionNameSchema,
+  DELIVERY_MODES,
+  DeliveryModeSchema,
+  McpServerNameSchema,
+  type ConfigScope,
+  type GlobalConfig,
+  type RepoConfig,
+} from './schema';
 
 export type ConfigValueSource = 'repository' | 'global' | 'default';
 
@@ -74,9 +83,119 @@ const baseBranch: ConfigKeyDefinition = {
   },
 };
 
+const SiteUrlSchema = z.url({ protocol: /^https$/ });
+
+const jiraSite: ConfigKeyDefinition = {
+  description:
+    'Jira Cloud site for reports (repository, or global default for manual and MCP modes).',
+  scopes: ['global', 'repository'],
+  parse(raw) {
+    const result = SiteUrlSchema.safeParse(raw.trim());
+    if (!result.success)
+      throw new UsageError(`Invalid value "${raw}" for jira.site: expected an https:// URL.`);
+    return new URL(result.data).origin;
+  },
+  get: (config) => config.jira?.site,
+  resolve: (repo, global) =>
+    repo?.jira?.site !== undefined
+      ? { value: repo.jira.site, source: 'repository' }
+      : global.jira?.site !== undefined
+        ? { value: global.jira.site, source: 'global' }
+        : { value: undefined, source: 'default' },
+  set: (config, value) => ({
+    ...config,
+    jira: { ...config.jira, site: SiteUrlSchema.parse(value) },
+  }),
+  unset: (config) => withJira(config, 'site'),
+};
+
+const jiraMode: ConfigKeyDefinition = {
+  description: `How reports reach Jira (${DELIVERY_MODES.join(', ')}; default manual).`,
+  scopes: ['global', 'repository'],
+  parse(raw) {
+    const result = DeliveryModeSchema.safeParse(raw.trim().toLowerCase());
+    if (!result.success) {
+      throw new UsageError(
+        `Invalid value "${raw}" for jira.mode. Supported: ${DELIVERY_MODES.join(', ')}.`,
+      );
+    }
+    return result.data;
+  },
+  get: (config) => config.jira?.mode,
+  resolve: (repo, global) =>
+    repo?.jira?.mode !== undefined
+      ? { value: repo.jira.mode, source: 'repository' }
+      : global.jira?.mode !== undefined
+        ? { value: global.jira.mode, source: 'global' }
+        : { value: 'manual', source: 'default' },
+  set: (config, value) => ({
+    ...config,
+    jira: { ...config.jira, mode: DeliveryModeSchema.parse(value) },
+  }),
+  unset: (config) => withJira(config, 'mode'),
+};
+
+/** Removes one field of `jira`, and `jira` itself when nothing is left. */
+function withJira<C extends GlobalConfig | RepoConfig>(config: C, field: 'site' | 'mode'): C {
+  const { [field]: _removed, ...rest } = (config.jira ?? {}) as Record<string, unknown>;
+  const { jira: _jira, ...others } = config;
+  return (Object.keys(rest).length > 0 ? { ...others, jira: rest } : others) as C;
+}
+
+const mcpServer: ConfigKeyDefinition = {
+  description: 'Claude Code MCP server that provides Atlassian access (global only).',
+  scopes: ['global'],
+  parse(raw) {
+    const result = McpServerNameSchema.safeParse(raw.trim());
+    if (!result.success) throw new UsageError(`Invalid value "${raw}" for mcp.server.`);
+    return result.data;
+  },
+  get: (config) => (config as GlobalConfig).mcp?.server,
+  resolve: (_repo, global) =>
+    global.mcp?.server !== undefined
+      ? { value: global.mcp.server, source: 'global' }
+      : { value: undefined, source: 'default' },
+  set: (config, value) => ({ ...config, mcp: { server: McpServerNameSchema.parse(value) } }),
+  unset: (config) => {
+    const { mcp: _removed, ...rest } = config as GlobalConfig;
+    return rest as typeof config;
+  },
+};
+
+const defaultConnection: ConfigKeyDefinition = {
+  description: 'Jira connection used when nothing else selects one (global only).',
+  scopes: ['global'],
+  parse(raw) {
+    const result = ConnectionNameSchema.safeParse(raw.trim());
+    if (!result.success) throw new UsageError(`Invalid value "${raw}" for jira.defaultConnection.`);
+    return result.data;
+  },
+  get: (config) => (config as GlobalConfig).jira?.defaultConnection,
+  resolve: (_repo, global) =>
+    global.jira?.defaultConnection !== undefined
+      ? { value: global.jira.defaultConnection, source: 'global' }
+      : { value: undefined, source: 'default' },
+  set: (config, value) => {
+    const global = config as GlobalConfig;
+    const name = ConnectionNameSchema.parse(value);
+    if (!global.jira?.connections?.[name]) {
+      throw new UsageError(`No Jira connection named "${name}". Run "git2jira login" first.`);
+    }
+    return { ...config, jira: { ...global.jira, defaultConnection: name } };
+  },
+  unset: (config) => {
+    const { defaultConnection: _removed, ...rest } = (config as GlobalConfig).jira ?? {};
+    return { ...config, jira: rest };
+  },
+};
+
 export const CONFIG_KEYS = {
   'report.language': reportLanguage,
   'base.branch': baseBranch,
+  'jira.mode': jiraMode,
+  'jira.site': jiraSite,
+  'jira.defaultConnection': defaultConnection,
+  'mcp.server': mcpServer,
 } as const satisfies Record<string, ConfigKeyDefinition>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;

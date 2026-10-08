@@ -24,17 +24,18 @@ describe('ServiceContainer', () => {
 
   it('throws NotImplementedError naming the delivering phase for unregistered services', () => {
     const container = new ServiceContainer();
-    expect(() => container.resolve('jiraClient')).toThrow(NotImplementedError);
-    expect(() => container.resolve('jiraClient')).toThrow(/Phase 2/);
+    expect(() => container.resolve('reportGenerator')).toThrow(NotImplementedError);
+    expect(() => container.resolve('reportGenerator')).toThrow(/Phase 3/);
+    expect(() => container.resolve('jiraConnections')).toThrow(/Phase 2/);
     expect(() => container.resolve('snapshotEngine')).toThrow(/Phase 1/);
   });
 });
 
 describe('default container', () => {
-  it('registers exactly the Phase 0 and Phase 1 services', () => {
+  it('registers exactly the services of Phases 0 to 2', () => {
     const container = createDefaultContainer();
     for (const [name, phase] of Object.entries(SERVICE_PHASES)) {
-      expect(container.has(name as keyof typeof SERVICE_PHASES), name).toBe(phase <= 1);
+      expect(container.has(name as keyof typeof SERVICE_PHASES), name).toBe(phase <= 2);
     }
   });
 });

@@ -50,9 +50,9 @@ describe('git2jira CLI', () => {
     });
   });
 
-  it('validates report --language before reporting it is not implemented', async () => {
-    expect((await h.run(['report', '--language', 'de'])).exitCode).toBe(ExitCode.Usage);
-    expect((await h.run(['report', '--language', 'uk'])).exitCode).toBe(ExitCode.NotImplemented);
+  it('validates report --language, and keeps end-to-end "report" for Phase 3', async () => {
+    expect((await h.run(['report', 'prepare', '--language', 'de'])).exitCode).toBe(ExitCode.Usage);
+    expect((await h.run(['report'])).exitCode).toBe(ExitCode.NotImplemented);
   });
 
   describe('config', () => {
@@ -91,7 +91,45 @@ describe('git2jira CLI', () => {
       expect(JSON.parse(stdout)).toEqual([
         { key: 'report.language', value: 'en', source: 'default' },
         { key: 'base.branch', value: null, source: 'default' },
+        { key: 'jira.mode', value: 'manual', source: 'default' },
+        { key: 'jira.site', value: null, source: 'default' },
+        { key: 'jira.defaultConnection', value: null, source: 'default' },
+        { key: 'mcp.server', value: null, source: 'default' },
       ]);
+    });
+
+    it('sets jira.site globally or per repository, normalized to its origin', async () => {
+      expect(
+        (await h.run(['config', 'set', 'jira.site', 'https://global.atlassian.net'])).exitCode,
+      ).toBe(0);
+      await h.run(['config', 'set', 'jira.mode', 'mcp', '--repo']);
+      const ok = await h.run([
+        'config',
+        'set',
+        'jira.site',
+        'https://x.atlassian.net/jira/',
+        '--repo',
+      ]);
+      expect(ok.exitCode).toBe(0);
+      expect((await h.run(['config', 'get', 'jira.site'])).stdout).toBe(
+        'https://x.atlassian.net\n',
+      );
+      // Sibling settings under "jira" survive set and unset.
+      expect((await h.run(['config', 'get', 'jira.mode', '--repo'])).stdout).toBe('mcp\n');
+      await h.run(['config', 'unset', 'jira.site', '--repo']);
+      expect((await h.run(['config', 'get', 'jira.site'])).stdout).toBe(
+        'https://global.atlassian.net\n',
+      );
+      expect((await h.run(['config', 'get', 'jira.mode', '--repo'])).stdout).toBe('mcp\n');
+      expect(
+        (await h.run(['config', 'set', 'jira.site', 'http://x.atlassian.net', '--repo'])).exitCode,
+      ).toBe(ExitCode.Usage);
+    });
+
+    it('only accepts a known connection as jira.defaultConnection', async () => {
+      const result = await h.run(['config', 'set', 'jira.defaultConnection', 'work']);
+      expect(result.exitCode).toBe(ExitCode.Usage);
+      expect(result.stderr).toContain('git2jira login');
     });
 
     it('rejects invalid values and unknown keys without writing', async () => {

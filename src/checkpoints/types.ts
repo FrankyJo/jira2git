@@ -50,9 +50,32 @@ export const BaselineSchema = z.discriminatedUnion('kind', [
  * - `publishing`: about to call Jira, outcome unknown until confirmed or resolved.
  * - `confirmed`: Jira returned the comment; checkpoint not promoted yet.
  * - `published`: checkpoint ref written; this is the new baseline.
- * - `cancelled`: definitely not published; baseline unchanged.
+ * - `failed`: Jira definitely did not create the comment; the snapshot is kept so the
+ *   same approved report can be retried. Does not block new reports.
+ * - `cancelled`: definitely not published and abandoned; baseline unchanged.
+ * - `revoked`: was published by user attestation (manual mode), then withdrawn by the user
+ *   because the attestation was a mistake. Its checkpoint ref is gone; the baseline is the
+ *   previous checkpoint again. The record stays for audit and can be confirmed again.
  */
-export const PublicationStateSchema = z.enum(['publishing', 'confirmed', 'published', 'cancelled']);
+export const PublicationStateSchema = z.enum([
+  'publishing',
+  'confirmed',
+  'published',
+  'failed',
+  'cancelled',
+  'revoked',
+]);
+
+/**
+ * How a publication was established. Absent on records written before Phase 2.5,
+ * which were all confirmed through the Jira REST API.
+ * - `jira-api`: Git2Jira's own Jira client received the created comment.
+ * - `mcp-tool`: the Claude Code session relayed an Atlassian MCP tool result that the
+ *   CLI validated (comment id and report marker). Not independently fetched by the CLI.
+ * - `user-attested`: the user stated that they pasted the report into Jira (manual mode).
+ *   Nothing was verified against Jira.
+ */
+export const ConfirmationMethodSchema = z.enum(['jira-api', 'mcp-tool', 'user-attested']);
 
 export const ReportRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -73,9 +96,15 @@ export const ReportRecordSchema = z.strictObject({
   updatedAt: z.iso.datetime(),
   publication: z
     .strictObject({
-      commentId: z.string().min(1),
+      /** Absent for manual publications: Git2Jira never learns the comment id. */
+      commentId: z.string().min(1).optional(),
       publishedAt: z.iso.datetime(),
+      confirmedBy: ConfirmationMethodSchema.optional(),
     })
+    .optional(),
+  /** Set when a user-attested publication was withdrawn (state `revoked`). */
+  revocation: z
+    .strictObject({ revokedAt: z.iso.datetime(), reason: z.string().max(500) })
     .optional(),
   /** Durable ref (and its commit) that keeps the published snapshot alive. */
   checkpointRef: z.string().startsWith('refs/git2jira/').optional(),
@@ -96,6 +125,7 @@ export type RepositoryIdentity = z.infer<typeof RepositoryIdentitySchema>;
 export type BranchIdentity = z.infer<typeof BranchIdentitySchema>;
 export type Baseline = z.infer<typeof BaselineSchema>;
 export type PublicationState = z.infer<typeof PublicationStateSchema>;
+export type ConfirmationMethod = z.infer<typeof ConfirmationMethodSchema>;
 export type ReportRecord = z.infer<typeof ReportRecordSchema>;
 export type LineageJournal = z.infer<typeof LineageJournalSchema>;
 

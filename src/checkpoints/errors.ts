@@ -83,3 +83,12 @@ export class InvalidSiteUrlError extends Git2JiraError {
     );
   }
 }
+
+export class DuplicateReportIdError extends Git2JiraError {
+  constructor(reportId: string, state: string) {
+    super(
+      `Report ${reportId} is already recorded as "${state}". A report id is published at most once; ` +
+        'run "git2jira recover" or prepare a new report.',
+    );
+  }
+}

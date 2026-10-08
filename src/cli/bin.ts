@@ -6,5 +6,7 @@ const exitCode = await runCli(process.argv.slice(2), {
   cwd: process.cwd(),
   stdout: process.stdout,
   stderr: process.stderr,
+  stdin: process.stdin,
+  interactive: process.stdin.isTTY && process.stdout.isTTY,
 });
 process.exitCode = exitCode;

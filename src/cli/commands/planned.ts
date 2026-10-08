@@ -1,7 +1,6 @@
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import { NotImplementedError } from '../../core/errors';
 import type { Phase } from '../../core/phases';
-import { SUPPORTED_LANGUAGES } from '../../localization/languages';
 
 interface PlannedCommand {
   name: string;
@@ -18,32 +17,10 @@ interface PlannedCommand {
 export const PLANNED_COMMANDS: readonly PlannedCommand[] = [
   {
     name: 'init',
-    description: 'Interactive setup: report language, Jira connection, Claude Code Skill.',
+    description: 'Interactive setup: report language, Jira mode (Atlassian MCP or manual), Skill.',
     phase: 5,
   },
   { name: 'doctor', description: 'Diagnose the installation and environment.', phase: 5 },
-  { name: 'login', description: 'Connect to Jira Cloud and store credentials securely.', phase: 2 },
-  { name: 'logout', description: 'Remove stored Jira credentials.', phase: 2 },
-  {
-    name: 'report',
-    description: 'Generate, preview, and publish an incremental Jira report.',
-    phase: 3,
-    configure: (command) =>
-      command
-        .addOption(
-          new Option('-l, --language <code>', 'report language for this run').choices(
-            SUPPORTED_LANGUAGES,
-          ),
-        )
-        .option('-i, --issue <key>', 'Jira issue key (default: detected from the branch name)')
-        .option('-b, --base <branch>', 'base branch for the first report of an issue'),
-  },
-  { name: 'history', description: 'List reports published for the current issue.', phase: 2 },
-  {
-    name: 'recover',
-    description: 'Reconcile interrupted publications and rebuild lost checkpoints.',
-    phase: 2,
-  },
   {
     name: 'uninstall',
     description: 'Remove the Claude Code Skill, credentials, and local configuration.',

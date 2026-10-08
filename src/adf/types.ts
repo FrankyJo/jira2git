@@ -4,7 +4,7 @@ import type { StructuredReport } from '../report/schema';
 /**
  * The subset of Atlassian Document Format that Git2Jira emits. Text from the
  * report is always placed in `text` nodes, never interpreted as markup, so
- * model output cannot inject links or mentions. Implemented in Phase 2.
+ * model output cannot inject links or mentions.
  */
 export type AdfMark = { type: 'strong' } | { type: 'em' } | { type: 'code' };
 
@@ -48,14 +48,32 @@ export interface AdfDocument {
   content: AdfBlock[];
 }
 
-/** Metadata appended to every comment so history can be recovered from Jira. */
+/** Non-secret metadata shown in every comment footer, so reports can be recognized in Jira. */
 export interface ReportFooter {
+  reportId: string;
   sequence: number;
-  baseTree: string | null;
+  baseTree: string;
   targetTree: string;
   toolVersion: string;
 }
 
+export type ReportFileStatus =
+  'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'type-changed';
+
+/** A changed path, taken from Git (never from model output). */
+export interface ReportFile {
+  status: ReportFileStatus;
+  path: string;
+  previousPath?: string | undefined;
+}
+
+export interface ReportRenderInput {
+  report: StructuredReport;
+  files: readonly ReportFile[];
+  labels: ReportLabels;
+  footer: ReportFooter;
+}
+
 export interface AdfRenderer {
-  render(report: StructuredReport, labels: ReportLabels, footer: ReportFooter): AdfDocument;
+  render(input: ReportRenderInput): AdfDocument;
 }

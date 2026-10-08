@@ -27,6 +27,7 @@ import type { GitCommandRunner } from '../../src/git/types';
 import {
   PublicationLifecycle,
   type AnalysisRequest,
+  type LifecycleDependencies,
   type PreparedReport,
 } from '../../src/publication/lifecycle';
 import { GitIncrementalDiffEngine } from '../../src/snapshots/diff';
@@ -186,7 +187,12 @@ export interface Engine {
   refs: GitRefs;
 }
 
-export function createEngine(repo: GitRepo, runner?: GitCommandRunner, now?: () => Date): Engine {
+export function createEngine(
+  repo: GitRepo,
+  runner?: GitCommandRunner,
+  now?: () => Date,
+  openCandidates?: LifecycleDependencies['openCandidates'],
+): Engine {
   const git = runner ?? new SpawnGitRunner({ env: repo.env });
   const store = new LineageStore({ timeoutMs: 5_000 });
   const refs = new GitRefs(git);
@@ -200,6 +206,7 @@ export function createEngine(repo: GitRepo, runner?: GitCommandRunner, now?: () 
     store,
     refs,
     ...(now ? { now } : {}),
+    ...(openCandidates ? { openCandidates } : {}),
   });
   return { runner: git, lifecycle, store, refs };
 }

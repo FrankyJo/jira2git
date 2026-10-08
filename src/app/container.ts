@@ -7,13 +7,18 @@ import type { ConfigStore } from '../config/store';
 import type { PathEnvironment } from '../config/paths';
 import type { CredentialStore } from '../credentials/types';
 import type { DiagnosticsRunner } from '../diagnostics/types';
+import type { DraftStore } from '../delivery/draft';
+import type { ReportDeliveryService } from '../delivery/service';
+import type { ProcessRunner } from '../core/process';
+import type { ClaudeMcpRegistry } from '../mcp/claude-code';
+import type { McpVerificationStore } from '../mcp/setup';
 import type { GitCommandRunner, GitRepositoryLocator, IssueKeyDetector } from '../git/types';
 import type { Prompter } from '../installer/prompter';
-import type { JiraAuthProvider } from '../jira/auth/types';
-import type { JiraClient } from '../jira/client/types';
+import type { JiraConnectionManager } from '../jira/connections';
 import type { LabelCatalog } from '../localization/catalog';
 import type { PublicationLifecycle } from '../publication/lifecycle';
-import type { PublicationService } from '../publication/types';
+import type { PlanStore } from '../publication/plan';
+import type { JiraPublicationService } from '../publication/service';
 import type { SkillInstaller } from '../skill/types';
 import type { IncrementalDiffEngine, SnapshotEngine } from '../snapshots/types';
 import { NotImplementedError } from '../core/errors';
@@ -34,12 +39,17 @@ export interface ServiceRegistry {
   gitRefs: GitRefs;
   publicationLifecycle: PublicationLifecycle;
   credentialStore: CredentialStore;
-  jiraAuth: JiraAuthProvider;
-  jiraClient: JiraClient;
+  jiraConnections: JiraConnectionManager;
+  planStore: PlanStore;
   reportGenerator: ReportGenerator;
   labelCatalog: LabelCatalog;
   adfRenderer: AdfRenderer;
-  publicationService: PublicationService;
+  publicationService: JiraPublicationService;
+  processRunner: ProcessRunner;
+  draftStore: DraftStore;
+  deliveryService: ReportDeliveryService;
+  claudeMcpRegistry: ClaudeMcpRegistry;
+  mcpVerificationStore: McpVerificationStore;
   skillInstaller: SkillInstaller;
   diagnostics: DiagnosticsRunner;
 }
@@ -50,7 +60,7 @@ export type ServiceName = keyof ServiceRegistry;
 export const SERVICE_PHASES: Readonly<Record<ServiceName, Phase>> = {
   pathEnvironment: 0,
   configStore: 0,
-  prompter: 5,
+  prompter: 2,
   gitRunner: 1,
   repositoryLocator: 1,
   issueKeyDetector: 1,
@@ -61,12 +71,17 @@ export const SERVICE_PHASES: Readonly<Record<ServiceName, Phase>> = {
   gitRefs: 1,
   publicationLifecycle: 1,
   credentialStore: 2,
-  jiraAuth: 2,
-  jiraClient: 2,
+  jiraConnections: 2,
+  planStore: 2,
   adfRenderer: 2,
+  labelCatalog: 2,
   publicationService: 2,
+  processRunner: 2,
+  draftStore: 2,
+  deliveryService: 2,
+  claudeMcpRegistry: 2,
+  mcpVerificationStore: 2,
   reportGenerator: 3,
-  labelCatalog: 3,
   skillInstaller: 4,
   diagnostics: 5,
 };

@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { LanguageSchema } from '../localization/languages';
 
+/** How reports reach Jira; see src/delivery/mode.ts. */
+export const DELIVERY_MODES = ['manual', 'mcp', 'api-token'] as const;
+export const DeliveryModeSchema = z.enum(DELIVERY_MODES);
+
 /**
  * Configuration files hold preferences only. Objects are strict so that an
  * unknown key — including any attempt to store a token, password, or secret —
@@ -19,17 +23,57 @@ export const ProjectKeySchema = z.string().regex(/^[A-Z][A-Z0-9_]{1,9}$/, {
   message: 'Project keys start with an uppercase letter and contain 2-10 of A-Z, 0-9, or _.',
 });
 
+/** Name of a Jira connection, e.g. `work`. Used in credential account names. */
+export const ConnectionNameSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,31}$/, {
+  message: 'Connection names use 1-32 lowercase letters, digits, "-" or "_".',
+});
+
+/**
+ * One Jira Cloud site the user has signed in to. Holds no secret: the API
+ * token lives in the OS credential store under `jira-api-token:<name>`.
+ */
+export const JiraConnectionSchema = z.strictObject({
+  siteUrl: z.url({ protocol: /^https$/ }),
+  authMethod: z.enum(['api-token', 'oauth']),
+  /** Atlassian account email used for Basic authentication (not a secret). */
+  email: z.email().optional(),
+  /** Classic tokens call the site directly; scoped tokens go through api.atlassian.com. */
+  tokenType: z.enum(['classic', 'scoped']).optional(),
+  cloudId: z.uuid().optional(),
+  /** Issues of these projects are routed to this connection when several exist. */
+  projectKeys: z.array(ProjectKeySchema).min(1).optional(),
+});
+
 const JiraSettingsSchema = z.strictObject({
-  /** Jira Cloud site, e.g. https://example.atlassian.net. Used from Phase 2. */
-  siteUrl: z.url({ protocol: /^https$/ }).optional(),
-  /** Selected JiraAuthProvider. Used from Phase 2. */
-  authMethod: z.enum(['api-token', 'oauth']).optional(),
+  /** How reports reach Jira: manual (default), mcp, or api-token. */
+  mode: DeliveryModeSchema.optional(),
+  /** Default Jira site for manual and MCP reports; repository `jira.site` wins. */
+  site: z.url({ protocol: /^https$/ }).optional(),
+  defaultConnection: ConnectionNameSchema.optional(),
+  connections: z.record(ConnectionNameSchema, JiraConnectionSchema).optional(),
+});
+
+/** Repository-level Jira preference; safe to commit because it names a site, not an account. */
+const RepoJiraSettingsSchema = z.strictObject({
+  site: z.url({ protocol: /^https$/ }).optional(),
+  mode: DeliveryModeSchema.optional(),
+});
+
+/** Name of a Claude Code MCP server, as shown by `claude mcp list`. */
+export const McpServerNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/, {
+  message: 'MCP server names use 1-64 letters, digits, spaces, ".", "_" or "-".',
+});
+
+/** Which Claude Code MCP server provides Atlassian access. No secrets: OAuth stays in Claude Code. */
+const McpSettingsSchema = z.strictObject({
+  server: McpServerNameSchema.optional(),
 });
 
 export const GlobalConfigSchema = z.strictObject({
   version: z.literal(CONFIG_SCHEMA_VERSION).optional(),
   report: ReportSettingsSchema.optional(),
   jira: JiraSettingsSchema.optional(),
+  mcp: McpSettingsSchema.optional(),
 });
 
 const IssueSettingsSchema = z.strictObject({
@@ -58,8 +102,10 @@ export const RepoConfigSchema = z.strictObject({
   report: ReportSettingsSchema.optional(),
   issue: IssueSettingsSchema.optional(),
   base: BaseSettingsSchema.optional(),
+  jira: RepoJiraSettingsSchema.optional(),
 });
 
+export type JiraConnectionConfig = z.infer<typeof JiraConnectionSchema>;
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 

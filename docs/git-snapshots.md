@@ -153,7 +153,8 @@ prepare()  → candidate ref     no journal entry yet; "no-changes" deletes the 
 beginPublication(digest)       under lock: journal += { state: publishing }
   ── Jira request (Phase 2) ──
 confirmPublication(commentId)  state: confirmed → checkpoint commit + ref → state: published
-resolvePending(outcome)        settles a `publishing` record after a Jira lookup
+resolvePending(outcome)        settles a `publishing` record: published, failed (retryable;
+                               snapshot kept), or cancelled
 recover()                      rebuilds journal from refs, promotes `confirmed`,
                                lists `publishing` records, removes stale candidates
 ```
@@ -211,5 +212,5 @@ recover()                      rebuilds journal from refs, promotes `confirmed`,
 - **Lock staleness** uses PID checks on the same host. On network file systems shared between hosts,
   a crashed holder's lock is only broken after 10 minutes.
 - **Minimum Git version**: 2.31.
-- `recover` and the `publishing` → Jira lookup are library operations in Phase 1. The `git2jira recover`
-  command arrives with Jira integration in Phase 2.
+- `git2jira recover` (Phase 2) runs this recovery and settles `publishing` records with a Jira lookup;
+  see [jira-publication.md](jira-publication.md).

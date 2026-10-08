@@ -35,10 +35,14 @@ src/
   git/            runner, repository locator, issue keys, base branch
   snapshots/      snapshot engine, incremental diff
   checkpoints/    record schemas, lineage journal, locks, refs, site identity
-  publication/    PublicationLifecycle (Phase 1); Jira publication types (Phase 2)
-  credentials/ jira/ adf/ report/ ai/ skill/ installer/ diagnostics/   interfaces for later phases
+  publication/    PublicationLifecycle (Phase 1); plans, JiraPublicationService, recovery (Phase 2)
+  credentials/    OS credential store adapters (macOS, Linux, Windows)
+  jira/           auth (API token, OAuth interfaces), REST client, connections
+  adf/            report renderer, validation, footer marker
+  report/ ai/ skill/ installer/ diagnostics/   interfaces for later phases
 tests/            Vitest suites mirroring src/
-  fixtures/       GitRepo: real temporary repositories with isolated Git config
+  fixtures/       GitRepo (real temporary repositories), MockJira (local mock Jira server),
+                  publication harness
 docs/             product and design documentation
 ```
 
@@ -60,6 +64,21 @@ docs/             product and design documentation
 (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`), so your own Git settings never affect results.
 `userState()` captures index bytes, HEAD, and every working-tree file (mode, content, mtime) to assert
 that analysis leaves them untouched. The LFS test runs only where `git lfs` is installed.
+
+## Jira tests
+
+Tests never contact a real Jira site. `tests/fixtures/mock-jira.ts` serves the REST endpoints Git2Jira
+uses on a local port, with accounts (classic and scoped tokens), permissions, moved issues, a small
+page size to force pagination, and fault injection (`status`, `hang`, `drop`, `process-then-drop`,
+`process-then-hang`, `process-then-status`) to simulate lost responses. Its `fetch` routes
+`https://example.atlassian.net` and `https://api.atlassian.com` to the mock. `MemoryCredentialStore`
+exists only in tests.
+
+The real macOS Keychain adapter test uses a throwaway keychain file and is opt-in:
+
+```sh
+GIT2JIRA_TEST_KEYCHAIN=1 pnpm test tests/credentials
+```
 
 ## Adding a service
 

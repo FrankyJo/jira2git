@@ -3,6 +3,7 @@ import {
   CheckpointCorruptedError,
   CheckpointUnavailableError,
   BranchChangedError,
+  DuplicateReportIdError,
   JournalMissingError,
   MultipleSitesError,
   PendingPublicationError,
@@ -19,6 +20,7 @@ import {
   type Baseline,
   type BranchIdentity,
   type Checkpoint,
+  type ConfirmationMethod,
   type JiraSite,
   type LineageJournal,
   type RepositoryIdentity,
@@ -60,6 +62,12 @@ export interface LifecycleDependencies {
   store: LineageStore;
   refs: GitRefs;
   now?: () => Date;
+  /**
+   * Candidate refs that open reports (plans and drafts not yet in the journal) still
+   * need. Recovery never removes them, however old they are: a manual report may wait
+   * days for the user's confirmation.
+   */
+  openCandidates?: (repository: RepositoryInfo) => Promise<readonly string[]>;
 }
 
 export interface AnalysisRequest {
@@ -119,8 +127,41 @@ export interface LineageKey {
   issueKey: IssueKey;
 }
 
+/** The fields of a prepared report that publication needs; PreparedReport satisfies it. */
+export interface PublicationCandidate {
+  reportId: string;
+  site: JiraSite;
+  snapshotRef: string;
+  snapshot: Snapshot;
+  baseline: Baseline;
+  context: { repository: RepositoryInfo; issueKey: IssueKey; branch: BranchIdentity };
+}
+
+export interface IssueIdentity {
+  repository: RepositoryInfo;
+  issueKey: IssueKey;
+  issueSource: 'option' | 'branch';
+  /** Sites this issue already has a report journal for in this repository. */
+  historySites: JiraSite[];
+}
+
+/**
+ * - published: Jira created the comment.
+ * - not published, `retryable`: Jira definitely did not create it; keep the snapshot
+ *   (state `failed`) so the same approved report can be sent again.
+ * - not published otherwise: abandon it (state `cancelled`, snapshot ref removed).
+ */
 export type PendingOutcome =
-  { published: true; commentId: string; publishedAt: string } | { published: false };
+  ({ published: true } & PublicationEvidence) | { published: false; retryable?: boolean };
+
+/** What establishes that a report reached Jira. See ConfirmationMethodSchema. */
+export interface PublicationEvidence {
+  /** Absent for user-attested (manual) publications. */
+  commentId?: string | undefined;
+  publishedAt: string;
+  /** Defaults to `jira-api`. */
+  confirmedBy?: ConfirmationMethod | undefined;
+}
 
 export interface RecoveryReport {
   rebuiltFromRefs: boolean;
@@ -145,6 +186,23 @@ export class PublicationLifecycle {
 
   constructor(private readonly deps: LifecycleDependencies) {
     this.now = deps.now ?? (() => new Date());
+  }
+
+  /** Read-only: locates the repository and issue key, and lists sites with history. */
+  async identify(
+    request: Pick<AnalysisRequest, 'cwd' | 'issue' | 'projectKeys'>,
+  ): Promise<IssueIdentity> {
+    const repository = await this.deps.locator.locate(request.cwd);
+    if (repository.branch === null) throw new DetachedHeadError();
+    const { issueKey, issueSource } = this.resolveIssue(repository.branch, request);
+    const historySites: JiraSite[] = [];
+    for (const siteId of await this.deps.store.sitesWithJournal(repository, issueKey)) {
+      const journal = await this.deps.store
+        .read(repository, siteId, issueKey)
+        .catch(() => undefined);
+      if (journal) historySites.push(journal.site);
+    }
+    return { repository, issueKey, issueSource, historySites };
   }
 
   /** Read-only: computes what the next report would contain. Creates no refs. */
@@ -177,13 +235,25 @@ export class PublicationLifecycle {
    * the Jira request; from now on a crash leaves a `publishing` record that
    * recovery settles instead of publishing twice.
    */
-  async beginPublication(report: PreparedReport, reportDigest: string): Promise<ReportRecord> {
+  async beginPublication(
+    report: PublicationCandidate,
+    reportDigest: string,
+  ): Promise<ReportRecord> {
     const { repository, issueKey } = report.context;
     return this.deps.store.withLock(repository, report.site.id, issueKey, async () => {
       const identity = await this.deps.store.repositoryIdentity(repository);
       const journal = await this.deps.store.read(repository, report.site.id, issueKey);
       const pending = unresolvedRecords(journal)[0];
       if (pending) throw new PendingPublicationError(pending.sequence, pending.state);
+      // A report id is sent at most once, except to retry a definite failure or to
+      // confirm again a manual publication the user withdrew.
+      const existing = journal?.records.find((r) => r.reportId === report.reportId);
+      if (existing && existing.state !== 'failed' && existing.state !== 'revoked') {
+        throw new DuplicateReportIdError(report.reportId, existing.state);
+      }
+      if (existing && existing.reportDigest !== reportDigest) {
+        throw new UnknownReportError(report.reportId, 'the report that was approved earlier');
+      }
 
       const latest = latestCheckpoint(journal);
       const expectedPrevious =
@@ -216,10 +286,17 @@ export class PublicationLifecycle {
         updatedAt: timestamp,
       } satisfies ReportRecord);
 
-      await this.deps.store.write(repository, {
-        ...(journal ?? newJournal(report.site, issueKey, identity)),
-        records: [...(journal?.records ?? []), record],
-      });
+      const base = journal ?? newJournal(report.site, issueKey, identity);
+      await this.deps.store.write(
+        repository,
+        existing
+          ? replaceRecord(base, {
+              ...record,
+              createdAt: existing.createdAt,
+              ...(existing.revocation ? { revocation: existing.revocation } : {}),
+            })
+          : { ...base, records: [...base.records, record] },
+      );
       return record;
     });
   }
@@ -228,14 +305,26 @@ export class PublicationLifecycle {
   async confirmPublication(
     key: LineageKey,
     reportId: string,
-    publication: { commentId: string; publishedAt: string },
+    evidence: PublicationEvidence,
   ): Promise<Checkpoint> {
+    const publication = {
+      ...(evidence.commentId !== undefined ? { commentId: evidence.commentId } : {}),
+      publishedAt: evidence.publishedAt,
+      confirmedBy: evidence.confirmedBy ?? 'jira-api',
+    };
     return this.deps.store.withLock(key.repository, key.site.id, key.issueKey, async () => {
       let journal = await this.requireJournal(key);
       const record = findRecord(journal, reportId);
       if (isCheckpoint(record)) return record;
-      if (record.state === 'cancelled')
+      if (record.state === 'cancelled' || record.state === 'revoked')
         throw new UnknownReportError(reportId, 'awaiting publication');
+      // A "failed" report that Jira turns out to have published is only promotable
+      // while nothing newer was published on top of its baseline.
+      if (
+        record.state === 'failed' &&
+        (latestCheckpoint(journal)?.sequence ?? 0) >= record.sequence
+      )
+        throw new StaleReportError();
       if (record.publication && record.publication.commentId !== publication.commentId) {
         throw new UnknownReportError(reportId, `confirmed with comment ${publication.commentId}`);
       }
@@ -257,40 +346,105 @@ export class PublicationLifecycle {
     outcome: PendingOutcome,
   ): Promise<ReportRecord> {
     if (outcome.published) {
-      return this.confirmPublication(key, reportId, {
-        commentId: outcome.commentId,
-        publishedAt: outcome.publishedAt,
-      });
+      const { published: _published, ...evidence } = outcome;
+      return this.confirmPublication(key, reportId, evidence);
     }
     return this.deps.store.withLock(key.repository, key.site.id, key.issueKey, async () => {
       const journal = await this.requireJournal(key);
       const record = findRecord(journal, reportId);
       if (record.state !== 'publishing')
         throw new UnknownReportError(reportId, 'in the publishing state');
-      const cancelled: ReportRecord = {
+      const settled: ReportRecord = {
         ...record,
-        state: 'cancelled',
+        state: outcome.retryable ? 'failed' : 'cancelled',
         updatedAt: this.now().toISOString(),
       };
-      await this.deps.store.write(key.repository, replaceRecord(journal, cancelled));
-      await this.deleteRefIfPresent(key.repository, record.snapshotRef);
-      return cancelled;
+      await this.deps.store.write(key.repository, replaceRecord(journal, settled));
+      if (!outcome.retryable) await this.deleteRefIfPresent(key.repository, record.snapshotRef);
+      return settled;
     });
   }
 
   /** Abandons a prepared report that was never sent. The baseline does not move. */
-  async cancel(report: PreparedReport): Promise<void> {
+  async cancel(
+    report: Pick<PublicationCandidate, 'reportId' | 'site' | 'snapshotRef' | 'context'>,
+  ): Promise<void> {
     const { repository, issueKey } = report.context;
     await this.deps.store.withLock(repository, report.site.id, issueKey, async () => {
       const journal = await this.deps.store.read(repository, report.site.id, issueKey);
       const record = journal?.records.find((r) => r.reportId === report.reportId);
-      if (record && record.state !== 'cancelled') {
+      if (record && !['cancelled', 'failed', 'revoked'].includes(record.state)) {
         throw new UnknownReportError(
           report.reportId,
           'cancellable: publication has started; settle it with resolvePending',
         );
       }
+      if (journal && (record?.state === 'failed' || record?.state === 'revoked')) {
+        await this.deps.store.write(
+          repository,
+          replaceRecord(journal, {
+            ...record,
+            state: 'cancelled',
+            updatedAt: this.now().toISOString(),
+          }),
+        );
+      }
       await this.deleteRefIfPresent(repository, report.snapshotRef);
+    });
+  }
+
+  /**
+   * Withdraws the latest checkpoint when it was established only by the user's word
+   * (manual mode) and the user says that was a mistake. The snapshot goes back under
+   * its candidate ref, the checkpoint ref is removed, and the previous checkpoint is
+   * the baseline again. API- or MCP-confirmed reports cannot be withdrawn: a comment
+   * exists in Jira, and Git2Jira cannot delete comments.
+   */
+  async revokeCheckpoint(key: LineageKey, reportId: string, reason: string): Promise<ReportRecord> {
+    return this.deps.store.withLock(key.repository, key.site.id, key.issueKey, async () => {
+      const journal = await this.requireJournal(key);
+      const record = findRecord(journal, reportId);
+      if (!isCheckpoint(record)) throw new UnknownReportError(reportId, 'a published checkpoint');
+      if (record.publication.confirmedBy !== 'user-attested') {
+        throw new UnknownReportError(
+          reportId,
+          'a manual (user-attested) publication; it was confirmed by Jira and cannot be withdrawn',
+        );
+      }
+      if (latestCheckpoint(journal)?.reportId !== reportId) {
+        throw new UnknownReportError(
+          reportId,
+          'the latest checkpoint: newer reports were confirmed on top of it',
+        );
+      }
+      const { repository } = key;
+      // Keep the snapshot reachable before the checkpoint ref that protects it goes away.
+      const candidate = await this.deps.refs.resolve(repository, record.snapshotRef);
+      if (candidate !== record.snapshot.commit) {
+        if (candidate) await this.deps.refs.delete(repository, record.snapshotRef, candidate);
+        await this.deps.refs.create(
+          repository,
+          record.snapshotRef,
+          record.snapshot.commit,
+          'git2jira: revoke checkpoint',
+        );
+      }
+      const {
+        checkpointRef: _ref,
+        checkpointCommit: _commit,
+        publication: _publication,
+        ...rest
+      } = record;
+      const now = this.now().toISOString();
+      const revoked: ReportRecord = {
+        ...rest,
+        state: 'revoked',
+        revocation: { revokedAt: now, reason: reason.slice(0, 500) },
+        updatedAt: now,
+      };
+      await this.deps.store.write(repository, replaceRecord(journal, revoked));
+      await this.deleteRefIfPresent(repository, record.checkpointRef);
+      return revoked;
     });
   }
 
@@ -354,9 +508,12 @@ export class PublicationLifecycle {
         }
       }
 
-      const active = new Set(
-        (journal?.records ?? []).filter((r) => r.state === 'publishing').map((r) => r.snapshotRef),
-      );
+      const active = new Set([
+        ...(journal?.records ?? [])
+          .filter((r) => ['publishing', 'failed', 'revoked'].includes(r.state))
+          .map((r) => r.snapshotRef),
+        ...((await this.deps.openCandidates?.(repository)) ?? []),
+      ]);
       const now = this.now().getTime();
       for (const candidate of await this.deps.refs.list(
         repository,

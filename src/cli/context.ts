@@ -10,6 +10,10 @@ export interface CliContext {
   cwd: string;
   stdout: OutputStream;
   stderr: OutputStream;
+  /** Source for `--token-stdin`. */
+  stdin?: AsyncIterable<Buffer | string>;
+  /** Whether prompts may be shown (stdin and stdout are terminals). */
+  interactive?: boolean;
 }
 
 export function println(stream: OutputStream, line = ''): void {

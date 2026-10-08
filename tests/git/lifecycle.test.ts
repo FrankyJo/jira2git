@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   BranchChangedError,
+  DuplicateReportIdError,
   CheckpointCorruptedError,
   CheckpointUnavailableError,
   JournalMissingError,
@@ -604,5 +605,91 @@ describe('garbage collection and worktrees', () => {
       acceptBranchChange: true,
     });
     expect(analysis.baseline).toMatchObject({ kind: 'checkpoint', sequence: 1 });
+  });
+});
+
+describe('retryable failures and report id uniqueness', () => {
+  it('keeps the snapshot of a definitely failed publication and lets the same report retry', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', '1');
+    const report = await prepared(engine, repo);
+    await engine.lifecycle.beginPublication(report, DIGEST);
+    const failed = await engine.lifecycle.resolvePending(key(report), report.reportId, {
+      published: false,
+      retryable: true,
+    });
+    expect(failed.state).toBe('failed');
+    expect(repo.git('rev-parse', report.snapshotRef).trim()).toBe(report.snapshot.commit);
+    // A failed report does not block new reports.
+    expect(
+      (await engine.lifecycle.analyze({ cwd: repo.root, site: SITE })).context.unresolved,
+    ).toEqual([]);
+
+    // A different digest for the same report id is refused; the same one retries in place.
+    await expect(engine.lifecycle.beginPublication(report, 'b'.repeat(64))).rejects.toThrow(
+      /approved earlier/,
+    );
+    await engine.lifecycle.beginPublication(report, DIGEST);
+    const journal = await engine.store.read(
+      report.context.repository,
+      SITE.id,
+      report.context.issueKey,
+    );
+    expect(journal?.records.map((r) => r.state)).toEqual(['publishing']);
+    await engine.lifecycle.confirmPublication(key(report), report.reportId, {
+      commentId: '1',
+      publishedAt: new Date().toISOString(),
+    });
+  });
+
+  it('refuses to begin a report id twice', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', '1');
+    const report = await prepared(engine, repo);
+    await engine.lifecycle.beginPublication(report, DIGEST);
+    await engine.lifecycle.confirmPublication(key(report), report.reportId, {
+      commentId: '1',
+      publishedAt: new Date().toISOString(),
+    });
+    await expect(engine.lifecycle.beginPublication(report, DIGEST)).rejects.toThrow(
+      DuplicateReportIdError,
+    );
+  });
+
+  it('cancels a failed report and removes its snapshot', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', '1');
+    const report = await prepared(engine, repo);
+    await engine.lifecycle.beginPublication(report, DIGEST);
+    await engine.lifecycle.resolvePending(key(report), report.reportId, {
+      published: false,
+      retryable: true,
+    });
+    await engine.lifecycle.cancel(report);
+    const journal = await engine.store.read(
+      report.context.repository,
+      SITE.id,
+      report.context.issueKey,
+    );
+    expect(journal?.records[0]?.state).toBe('cancelled');
+    expect(repo.git('for-each-ref', 'refs/git2jira')).toBe('');
+  });
+
+  it('does not promote a failed report that Jira published after a newer checkpoint', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', '1');
+    const stale = await prepared(engine, repo);
+    await engine.lifecycle.beginPublication(stale, DIGEST);
+    await engine.lifecycle.resolvePending(key(stale), stale.reportId, {
+      published: false,
+      retryable: true,
+    });
+    await publish(engine, { cwd: repo.root });
+    await expect(
+      engine.lifecycle.confirmPublication(key(stale), stale.reportId, {
+        commentId: '9',
+        publishedAt: new Date().toISOString(),
+      }),
+    ).rejects.toThrow(StaleReportError);
   });
 });

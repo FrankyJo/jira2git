@@ -12,6 +12,12 @@ export async function createTempDir(): Promise<{ dir: string; cleanup: () => Pro
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
+/** Narrows away `undefined` in tests, failing loudly instead of using `!`. */
+export function must<T>(value: T | undefined | null, what = 'value'): T {
+  if (value === undefined || value === null) throw new Error(`expected ${what}`);
+  return value;
+}
+
 export class MemoryStream {
   text = '';
   write(chunk: string): boolean {

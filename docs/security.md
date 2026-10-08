@@ -2,15 +2,16 @@
 
 ## Threat model
 
-| Asset                    | Threat                                                         | Control                                                                                                      |
-| ------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Jira credentials         | Leak via repository, config, logs, prompts, crash reports      | OS credential store only; strict config schemas reject secret fields; credentials only reach the HTTP layer  |
-| Jira issue               | Unwanted or manipulated comment                                | Publication requires explicit approval bound to the report digest; no edit/delete API exists in the client   |
-| Developer's working tree | Modification during analysis                                   | Snapshots use a temporary index; no checkout, stash, reset, or write to tracked files                        |
-| Developer's machine      | Command injection through branch names, paths, or diff content | `execFile` with argument arrays only; `exec`/`execSync` banned by lint rule                                  |
-| Report integrity         | Prompt injection from code, README, or Jira text               | Untrusted content is quoted data; model output is schema-validated, size-bounded, rendered as plain ADF text |
-| Billing                  | Silent switch from subscription to API-key billing             | Headless mode checks for API-key configuration and stops to ask                                              |
-| Claude Code credentials  | Extraction or reuse                                            | Never read; Skill mode runs in the existing session                                                          |
+| Asset                    | Threat                                                                  | Control                                                                                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Jira credentials         | Leak via repository, config, logs, prompts, crash reports, process list | OS credential store only, written over stdin (never argv); strict config schemas reject secret fields; credentials only reach the HTTP layer; redirects not followed        |
+| Jira issue               | Unwanted, duplicated, or manipulated comment                            | Approval bound to the report digest; seven pre-publish checks; no automatic retry of comment creation; reconciliation by report id; no edit/delete API exists in the client |
+| Developer's terminal     | Escape sequences in Jira text (summaries, error messages)               | Jira text printed through `terminalSafe`                                                                                                                                    |
+| Developer's working tree | Modification during analysis                                            | Snapshots use a temporary index; no checkout, stash, reset, or write to tracked files                                                                                       |
+| Developer's machine      | Command injection through branch names, paths, or diff content          | `execFile` with argument arrays only; `exec`/`execSync` banned by lint rule                                                                                                 |
+| Report integrity         | Prompt injection from code, README, or Jira text                        | Untrusted content is quoted data; model output is schema-validated, size-bounded, rendered as plain ADF text                                                                |
+| Billing                  | Silent switch from subscription to API-key billing                      | Headless mode checks for API-key configuration and stops to ask                                                                                                             |
+| Claude Code credentials  | Extraction or reuse                                                     | Never read; Skill mode runs in the existing session                                                                                                                         |
 
 ## Rules
 
@@ -21,8 +22,8 @@
    `*.key`, `id_rsa*`, `.npmrc`, `.netrc`, …) are listed by name but excluded from the diff text that
    is analyzed, even if they were committed.
 3. **No Jira writes without explicit approval.** Approval is a human action bound to a plan id and
-   SHA-256 digest of the exact previewed report. In Skill mode the publish command is never
-   pre-approved, so Claude Code's own permission prompt applies. Standalone mode needs an interactive TTY
+   SHA-256 digest of the exact previewed report. In Skill mode the publish command (and, in MCP mode,
+   the MCP comment tool) is never pre-approved, so Claude Code's own permission prompt applies. Standalone mode needs an interactive TTY
    confirmation. There is no `--yes` flag for publishing.
 4. **No working-tree modification.** See [git-snapshots.md](git-snapshots.md).
 5. **Untrusted input stays data.** Instructions inside analyzed files, commit messages, READMEs, or Jira
@@ -38,7 +39,24 @@
 9. **Honest failures.** Unavailable features exit non-zero. A missing secure credential backend is an
    error, never a plaintext fallback.
 10. **Minimal dependencies.** Three runtime dependencies; lockfile committed; CI installs with
-    `--frozen-lockfile`.
+    `--frozen-lockfile`. The Jira client uses Node's built-in `fetch`; OS credential stores are reached
+    through their own command-line tools, so no native module is needed.
+11. **Uncertain writes are reconciled, not repeated.** A comment request with an unknown outcome is
+    looked up in Jira by its report id, considering only comments by the authenticated account. It is
+    sent again only after a definite rejection, or a complete scan plus a settle window. Exactly-once
+    delivery is not claimed: Jira has no idempotency key for comments.
+12. **Validated Jira data.** Every Jira response is schema-validated; path parameters are validated
+    before URLs are built; comment metadata read back from Jira is validated and treated as untrusted.
+13. **Checkpoints move only on evidence.** Generating, showing, copying, or exporting a report never
+    moves a checkpoint. Manual mode moves it only on the user's own confirmation of the exact digest
+    (recorded as `user-attested`, never presented as verified). MCP mode moves it only on a tool result or
+    comment listing that carries the report's marker; a model-reported "success" flag is not accepted.
+14. **MCP authorization stays in Claude Code.** Git2Jira never reads, extracts, or reuses Claude Code's
+    OAuth tokens or configuration files; it uses only the `claude mcp` commands. It never claims MCP access
+    works before a tool call from the session proved it, never works around organization controls, and
+    never edits or replaces an existing MCP server registration.
+15. **Pasted text is escaped.** The Markdown report escapes model text so it cannot create links,
+    images, HTML, headings, or tables when Jira or the MCP server interprets Markdown.
 
 ## File permissions
 
