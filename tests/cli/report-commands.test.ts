@@ -188,11 +188,11 @@ describe('report and mcp commands', () => {
     });
   });
 
-  it('keeps API-token reports through "report" for Phase 3', async () => {
+  it('leaves API-token reports to the interactive "report" command', async () => {
     await repo.write('src/a.ts', 'x\n');
     const result = await run(['report', 'prepare', '--mode', 'api-token']);
-    expect(result.exitCode).toBe(ExitCode.NotImplemented);
-    expect((await run(['report'])).exitCode).toBe(ExitCode.NotImplemented);
+    expect(result.exitCode).toBe(ExitCode.Usage);
+    expect(result.stderr).toContain('git2jira report --mode api-token');
   });
 
   it('registers MCP and records a verification, without claiming authorization', async () => {

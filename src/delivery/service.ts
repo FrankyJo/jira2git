@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { z } from 'zod';
 import type { AdfRenderer, ReportFile } from '../adf/types';
 import { validateAdfDocument } from '../adf/validate';
 import { StaleReportError } from '../checkpoints/errors';
@@ -27,11 +26,7 @@ import {
 } from '../mcp/results';
 import { ATLASSIAN_TOOLS } from '../mcp/tools';
 import { canonicalJson, changesDigest, sha256 } from '../publication/digest';
-import {
-  ApprovalMismatchError,
-  PublicationMismatchError,
-  ReportValidationError,
-} from '../publication/errors';
+import { ApprovalMismatchError, PublicationMismatchError } from '../publication/errors';
 import type {
   Analysis,
   LineageKey,
@@ -39,7 +34,16 @@ import type {
   PublicationLifecycle,
 } from '../publication/lifecycle';
 import { commentUrl } from '../publication/service';
-import { StructuredReportSchema } from '../report/schema';
+import { packageWarnings } from '../ai/engine';
+import { finalizeReport, parseReportInput } from '../report/validate';
+import {
+  buildAnalysisPackage,
+  reportDiffOptions,
+  reportFacts,
+  snapshotChangeSet,
+  type AnalysisPackage,
+  type TestEvidence,
+} from '../ai/analysis';
 import { stateDir } from '../snapshots/engine';
 import type { ChangeSet, DiffOptions, FileChange, IncrementalDiffEngine } from '../snapshots/types';
 import { isOpen, type Draft, type DraftStore, type ManualDraft, type McpDraft } from './draft';
@@ -74,6 +78,10 @@ export interface DraftPrepareRequest {
   site: JiraSite;
   siteIsPlaceholder: boolean;
   userContext?: string | undefined;
+  /** Jira issue details, if the user or the session has them. Optional in every mode. */
+  issueContext?: { title?: string | undefined; description?: string | undefined } | undefined;
+  /** Test results the report may cite. */
+  tests?: readonly TestEvidence[] | undefined;
   /** MCP mode only. */
   mcp?:
     | {
@@ -86,7 +94,7 @@ export interface DraftPrepareRequest {
 }
 
 export type DraftPrepareOutcome =
-  | { status: 'prepared'; draft: Draft; changeSet: ChangeSet }
+  | { status: 'prepared'; draft: Draft; changeSet: ChangeSet; analysis: AnalysisPackage }
   | { status: 'no-changes'; analysis: Analysis }
   /** An open draft already exists for this issue; resume or cancel it first. */
   | { status: 'pending'; draft: Draft };
@@ -163,6 +171,7 @@ export class ReportDeliveryService {
     const { repository, issueKey } = identity;
 
     let issue: { id: string; summary: string } | undefined;
+    let issueDescription: string | undefined;
     if (request.mode === 'mcp') {
       if (!request.mcp)
         throw new UsageError('MCP mode needs the server, cloud id, and issue lookup.');
@@ -175,6 +184,7 @@ export class ReportDeliveryService {
       // Never switch issues: the lookup must return exactly this key (not a moved issue).
       if (found.key !== issueKey) throw new IssueKeyMismatchError(issueKey, found.key);
       issue = { id: found.id, summary: found.summary.slice(0, 2000) };
+      issueDescription = found.description;
     }
 
     const open = (await this.deps.drafts.list(repository)).find(
@@ -182,7 +192,11 @@ export class ReportDeliveryService {
     );
     if (open) return { status: 'pending', draft: open };
 
-    const result = await lifecycle.prepare({ ...request, site: request.site });
+    const result = await lifecycle.prepare({
+      ...request,
+      site: request.site,
+      diffOptions: request.diffOptions ?? reportDiffOptions(),
+    });
     if (result.status === 'no-changes') return { status: 'no-changes', analysis: result.analysis };
     const prepared = result.report;
     try {
@@ -204,6 +218,8 @@ export class ReportDeliveryService {
         files,
         changesDigest: changesDigest(files),
         ...(request.userContext ? { userContext: request.userContext.slice(0, 4000) } : {}),
+        ...issueContextField(request.issueContext, issue, issueDescription),
+        ...(request.tests && request.tests.length > 0 ? { testEvidence: [...request.tests] } : {}),
         events: [{ at: timestamp, status: 'DRAFT' }],
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -221,15 +237,65 @@ export class ReportDeliveryService {
               attempts: [],
             };
       await this.deps.drafts.write(repository, draft);
-      return { status: 'prepared', draft, changeSet: prepared.changeSet };
+      return {
+        status: 'prepared',
+        draft,
+        changeSet: prepared.changeSet,
+        analysis: this.packageFor(repository, draft, prepared.changeSet),
+      };
     } catch (error) {
       await lifecycle.cancel(prepared).catch(() => undefined);
       throw error;
     }
   }
 
-  /** Validates a structured report and renders it (Markdown, plain text, ADF) with a digest. */
-  async submit(cwd: string, reportId: string, input: unknown): Promise<Draft> {
+  /**
+   * The analysis package of a draft, rebuilt from its two trees. Deterministic: the
+   * snapshot is analyzed, never the current working tree, so a report and its candidate
+   * snapshot stay paired however long the draft waits.
+   */
+  async analysis(cwd: string, reportId: string): Promise<AnalysisPackage> {
+    const repository = await this.deps.locator.locate(cwd);
+    const draft = await this.deps.drafts.read(repository, reportId);
+    const changeSet = await snapshotChangeSet(
+      this.deps.diff,
+      repository,
+      draft.baseline,
+      draft.snapshot,
+    );
+    return this.packageFor(repository, draft, changeSet);
+  }
+
+  private packageFor(repository: RepositoryInfo, draft: Draft, changeSet: ChangeSet) {
+    return buildAnalysisPackage({
+      reportId: draft.reportId,
+      issueKey: draft.issueKey,
+      language: draft.language,
+      deliveryMode: draft.mode,
+      repositoryId: draft.repositoryId,
+      repositoryRoot: repository.root,
+      branch: draft.branch.name,
+      sequence: draft.sequence,
+      baseline: draft.baseline,
+      snapshot: draft.snapshot,
+      changeSet,
+      tests: draft.testEvidence,
+      issue: draft.issueContext,
+      userContext: draft.userContext,
+    });
+  }
+
+  /**
+   * Validates a report against the draft's Git facts (issue, language, files, snapshot,
+   * test evidence), completes it, and renders it (Markdown, plain text, ADF) with a digest.
+   * Accepts v2 content, a full v2 report, or a v1 report. Never moves a checkpoint.
+   */
+  async submit(
+    cwd: string,
+    reportId: string,
+    input: unknown,
+    meta: { by?: 'session' | 'headless' | 'external'; warnings?: readonly string[] } = {},
+  ): Promise<Draft> {
     const repository = await this.deps.locator.locate(cwd);
     const draft = await this.deps.drafts.read(repository, reportId);
     const editable =
@@ -241,24 +307,20 @@ export class ReportDeliveryService {
         `Report ${reportId} is ${draft.status}; its content can no longer change.`,
       );
     }
-    const parsed = StructuredReportSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new ReportValidationError(
-        z.prettifyError(parsed.error).split('\n').slice(0, 6).join(' '),
-      );
-    }
-    const report = parsed.data;
-    // Which issue a report goes to is decided by Git and the user, never by model output.
-    if (report.issueKey !== draft.issueKey) {
-      throw new ReportValidationError(
-        `it is for ${report.issueKey}, but was prepared for ${draft.issueKey}.`,
-      );
-    }
-    if (report.language !== draft.language) {
-      throw new ReportValidationError(
-        `it is written in "${report.language}", expected "${draft.language}".`,
-      );
-    }
+    const { content, legacy } = parseReportInput(input);
+    const pkg = this.packageFor(
+      repository,
+      draft,
+      await snapshotChangeSet(this.deps.diff, repository, draft.baseline, draft.snapshot),
+    );
+    const report = finalizeReport(content, reportFacts(pkg, draft.files), { legacy });
+    const generation = {
+      by: meta.by ?? 'external',
+      at: this.now().toISOString(),
+      warnings: [...(meta.warnings ?? packageWarnings(pkg))]
+        .slice(0, 50)
+        .map((w) => w.slice(0, 1000)),
+    };
     const labels = this.deps.labels.labels(draft.language);
     const adf = validateAdfDocument(
       this.deps.renderer.render({
@@ -287,7 +349,7 @@ export class ReportDeliveryService {
       return this.deps.drafts.transition(
         repository,
         draft,
-        { ...draft, status: 'READY_TO_COPY', report, rendered, reportDigest },
+        { ...draft, status: 'READY_TO_COPY', report, rendered, reportDigest, generation },
         this.now(),
       );
     }
@@ -295,7 +357,7 @@ export class ReportDeliveryService {
     return this.deps.drafts.transition(
       repository,
       draft,
-      { ...rest, status: 'READY_FOR_REVIEW', report, rendered, reportDigest },
+      { ...rest, status: 'READY_FOR_REVIEW', report, rendered, reportDigest, generation },
       this.now(),
     );
   }
@@ -1179,6 +1241,19 @@ export async function openDraftRefs(
 function withoutRecovery(draft: ManualDraft): ManualDraft {
   const { recovery: _recovery, resumeStatus: _resume, ...rest } = draft;
   return rest;
+}
+
+function issueContextField(
+  given: DraftPrepareRequest['issueContext'],
+  lookup: { summary: string } | undefined,
+  lookupDescription: string | undefined,
+): { issueContext?: { title?: string; description?: string } } {
+  const title = (given?.title ?? lookup?.summary ?? '').slice(0, 2000);
+  const description = (given?.description ?? lookupDescription ?? '').slice(0, 20_000);
+  if (!title && !description) return {};
+  return {
+    issueContext: { ...(title ? { title } : {}), ...(description ? { description } : {}) },
+  };
 }
 
 function toReportFile(file: FileChange): ReportFile {

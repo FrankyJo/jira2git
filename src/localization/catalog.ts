@@ -1,4 +1,4 @@
-import type { ChangeKind } from '../report/schema';
+import type { ChangeKind, TestStatus, TestRun } from '../report/schema';
 import type { Language } from './languages';
 
 /**
@@ -23,6 +23,12 @@ export interface ReportLabels {
   copiedFrom: string;
   /** Marks a file whose type changed (e.g. file to symlink). */
   typeChanged: string;
+  /** First line of the testing section, decided by evidence. */
+  testStatus: Readonly<Record<TestStatus, string>>;
+  testOutcomes: Readonly<Record<TestRun['outcome'], string>>;
+  testSources: Readonly<Record<TestRun['source'], string>>;
+  /** `{analyzed}` and `{total}` are replaced with file counts. */
+  coverageIncomplete: string;
 }
 
 export interface LabelCatalog {
@@ -49,6 +55,22 @@ export const REPORT_LABELS: Readonly<Record<Language, ReportLabels>> = {
     moreItems: '… and {count} more',
     copiedFrom: 'copied from {path}',
     typeChanged: 'type changed',
+    testStatus: {
+      passed: 'All recorded test runs passed.',
+      failed: 'The recorded test runs failed.',
+      partial: 'Some recorded test runs failed.',
+      'not-run': 'No tests were run for this report.',
+      reported: 'Testing as stated by the report author (not verified by Git2Jira):',
+    },
+    testOutcomes: {
+      passed: 'passed',
+      failed: 'failed',
+      error: 'could not be run',
+      'timed-out': 'timed out',
+    },
+    testSources: { git2jira: 'run by Git2Jira', reported: 'reported' },
+    coverageIncomplete:
+      'Only {analyzed} of {total} changed files were analyzed in full; the others are listed but may not be described.',
   },
   uk: {
     title: 'Звіт про реалізацію',
@@ -69,6 +91,22 @@ export const REPORT_LABELS: Readonly<Record<Language, ReportLabels>> = {
     moreItems: '… та ще {count}',
     copiedFrom: 'скопійовано з {path}',
     typeChanged: 'змінено тип',
+    testStatus: {
+      passed: 'Усі зафіксовані запуски тестів пройшли успішно.',
+      failed: 'Зафіксовані запуски тестів завершилися з помилками.',
+      partial: 'Частина зафіксованих запусків тестів завершилася з помилками.',
+      'not-run': 'Для цього звіту тести не запускалися.',
+      reported: 'Тестування за словами автора звіту (Git2Jira не перевіряв):',
+    },
+    testOutcomes: {
+      passed: 'пройдено',
+      failed: 'не пройдено',
+      error: 'не вдалося запустити',
+      'timed-out': 'перевищено час очікування',
+    },
+    testSources: { git2jira: 'запущено Git2Jira', reported: 'повідомлено' },
+    coverageIncomplete:
+      'Повністю проаналізовано лише {analyzed} з {total} змінених файлів; решта перелічена, але може бути не описана.',
   },
 };
 

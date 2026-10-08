@@ -57,6 +57,12 @@
     never edits or replaces an existing MCP server registration.
 15. **Pasted text is escaped.** The Markdown report escapes model text so it cannot create links,
     images, HTML, headings, or tables when Jira or the MCP server interprets Markdown.
+16. **Model context is minimized and redacted.** Secret files are never read into the analysis package;
+    secret-looking values in diffs, commit subjects, Jira text, user context, and test output are
+    redacted; untrusted text is fenced with a random nonce; the headless writer runs without tools, MCP,
+    or the repository as working directory. See [ai-reporting.md](ai-reporting.md).
+17. **Model output is checked against Git.** Reports naming files outside the change set, another issue,
+    language, or snapshot, or claiming tests, deployments, or approvals without evidence are rejected.
 
 ## File permissions
 

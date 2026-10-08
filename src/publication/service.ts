@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { z } from 'zod';
 import { findReportMarkers } from '../adf/footer';
 import { adfToPlainText } from '../adf/text';
 import type { AdfDocument, AdfRenderer, ReportFile } from '../adf/types';
@@ -21,7 +20,16 @@ import { JiraClientError, JiraNotFoundError, JiraRequestError } from '../jira/cl
 import type { JiraClient, JiraComment } from '../jira/client/types';
 import type { ConnectionCriteria, JiraConnectionManager, JiraSession } from '../jira/connections';
 import type { LabelCatalog } from '../localization/catalog';
-import { StructuredReportSchema, type StructuredReport } from '../report/schema';
+import type { StoredReport, StructuredReport } from '../report/schema';
+import { finalizeReport, parseReportInput } from '../report/validate';
+import {
+  buildAnalysisPackage,
+  reportDiffOptions,
+  reportFacts,
+  snapshotChangeSet,
+  type AnalysisPackage,
+  type TestEvidence,
+} from '../ai/analysis';
 import { stateDir } from '../snapshots/engine';
 import type { FileChange, IncrementalDiffEngine } from '../snapshots/types';
 import { changesDigest, reportDigest } from './digest';
@@ -31,7 +39,6 @@ import {
   NotApprovedError,
   PublicationInProgressError,
   PublicationMismatchError,
-  ReportValidationError,
 } from './errors';
 import type {
   IssueIdentity,
@@ -52,6 +59,13 @@ import type {
   ReviewResult,
   TargetSelection,
 } from './types';
+
+/** What a review may cite besides Git: test results and the (untrusted) issue text. */
+export interface ReviewContext {
+  tests?: readonly TestEvidence[] | undefined;
+  issue?: { title?: string | undefined; description?: string | undefined } | undefined;
+  userContext?: string | undefined;
+}
 
 export interface PublicationServiceDependencies {
   lifecycle: PublicationLifecycle;
@@ -125,7 +139,11 @@ export class JiraPublicationService {
     const session = connections.session(selected.connection);
     const issue = await this.verifyIssue(session, identity.issueKey);
 
-    const result = await lifecycle.prepare({ ...request, site: selected.connection.site });
+    const result = await lifecycle.prepare({
+      ...request,
+      site: selected.connection.site,
+      diffOptions: request.diffOptions ?? reportDiffOptions(),
+    });
     if (result.status === 'no-changes') return { status: 'no-changes', analysis: result.analysis };
     const prepared = result.report;
     try {
@@ -168,7 +186,12 @@ export class JiraPublicationService {
   }
 
   /** Validates a structured report, renders and validates the ADF comment, and computes its digest. */
-  async review(cwd: string, reportId: string, input: unknown): Promise<ReviewResult> {
+  async review(
+    cwd: string,
+    reportId: string,
+    input: unknown,
+    context: ReviewContext = {},
+  ): Promise<ReviewResult> {
     const repository = await this.deps.locator.locate(cwd);
     const plan = await this.deps.plans.read(repository, reportId);
     if (!['DRAFT', 'READY_FOR_REVIEW', 'APPROVED'].includes(plan.status)) {
@@ -176,24 +199,9 @@ export class JiraPublicationService {
         `Report ${reportId} is ${plan.status}; its content can no longer change.`,
       );
     }
-    const parsed = StructuredReportSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new ReportValidationError(
-        z.prettifyError(parsed.error).split('\n').slice(0, 6).join(' '),
-      );
-    }
-    const report = parsed.data;
-    // Which issue a report goes to is decided by Git and the user, never by model output.
-    if (report.issueKey !== plan.issueKey) {
-      throw new ReportValidationError(
-        `it is for ${report.issueKey}, but was prepared for ${plan.issueKey}.`,
-      );
-    }
-    if (report.language !== plan.language) {
-      throw new ReportValidationError(
-        `it is written in "${report.language}", expected "${plan.language}".`,
-      );
-    }
+    const { content, legacy } = parseReportInput(input);
+    const pkg = await this.analysis(cwd, reportId, context);
+    const report = finalizeReport(content, reportFacts(pkg, plan.files), { legacy });
     const document = validateAdfDocument(this.render(plan, report));
     const digest = this.digestOf(plan, document);
     const { approval: _cleared, ...rest } = plan;
@@ -204,6 +212,41 @@ export class JiraPublicationService {
       this.now(),
     );
     return { plan: next, document, reportDigest: digest };
+  }
+
+  /**
+   * The analysis package of a plan, rebuilt from its two trees (never the working tree).
+   * Issue details come from Jira at preparation and are passed back in by the caller.
+   */
+  async analysis(
+    cwd: string,
+    reportId: string,
+    context: ReviewContext = {},
+  ): Promise<AnalysisPackage> {
+    const repository = await this.deps.locator.locate(cwd);
+    const plan = await this.deps.plans.read(repository, reportId);
+    const changeSet = await snapshotChangeSet(
+      this.deps.diff,
+      repository,
+      plan.baseline,
+      plan.snapshot,
+    );
+    return buildAnalysisPackage({
+      reportId: plan.reportId,
+      issueKey: plan.issueKey,
+      language: plan.language,
+      deliveryMode: 'api-token',
+      repositoryId: plan.repositoryId,
+      repositoryRoot: repository.root,
+      branch: plan.branch.name,
+      sequence: plan.sequence,
+      baseline: plan.baseline,
+      snapshot: plan.snapshot,
+      changeSet,
+      tests: context.tests,
+      issue: context.issue ?? { title: plan.issue.summary },
+      userContext: context.userContext,
+    });
   }
 
   /** Records explicit user approval of exactly one previewed digest. */
@@ -550,7 +593,7 @@ export class JiraPublicationService {
   private verifyApproval(
     plan: StoredPlan,
     digest: string,
-  ): { report: StructuredReport; document: AdfDocument } {
+  ): { report: StoredReport; document: AdfDocument } {
     if (!plan.report || !plan.document || !plan.reportDigest || !plan.approval) {
       throw new NotApprovedError(plan.reportId, plan.status);
     }

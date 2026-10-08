@@ -43,8 +43,8 @@ switches modes by itself. See [jira-publication.md](jira-publication.md#delivery
 | Publication lifecycle  | `src/publication`  | Snapshot lifecycle (1); plans, approval, Jira publication, recovery (2)                 | 1 / 2   |
 | Report delivery        | `src/delivery`     | Modes, drafts (manual and MCP state machines), text renderer, site                      | 2.5     |
 | Atlassian MCP          | `src/mcp`          | Documented tool table, bridge schemas, result parsers, access check, `claude mcp` setup | 2.5     |
-| Report schema          | `src/report`       | Language-independent structured report contract                                         | 3       |
-| AI reporting           | `src/ai`           | `ReportGenerator` for Skill and headless modes                                          | 3       |
+| Report schema          | `src/report`       | Structured report v2, validation against Git's facts, terminal preview                  | 3       |
+| AI reporting           | `src/ai`           | Analysis package, redaction, prompts, `ReportEngine`, headless Claude Code provider     | 3       |
 | Claude Code Skill      | `src/skill`        | Installing and checking the `/jira-report` Skill                                        | 4       |
 | Installer              | `src/installer`    | `Prompter` port, @clack/prompts adapter, language and Jira mode steps (2.5), wizard (5) | 2.5 / 5 |
 | Diagnostics            | `src/diagnostics`  | `doctor` checks                                                                         | 5       |
@@ -89,7 +89,7 @@ Implemented commands for manual and MCP delivery; the Skill that calls them is P
 /jira-report (main Claude Code session)
   ├─ git2jira report prepare --json [--mode] [--language]      snapshot, draft, generation request
   │     MCP: first getAccessibleAtlassianResources + getJiraIssue → --site --cloud-id --issue-lookup
-  ├─ (read-only subagent, Phase 3/4) writes the StructuredReport JSON from the request
+  ├─ the session (read-only subagent in Phase 4) writes the report JSON from `generation`
   ├─ git2jira report submit --report <id> --input <file>       validate, render md/text/ADF, digest
   ├─ show the report; ask the user
   │
@@ -129,10 +129,11 @@ and refuses to publish without one.
 
 - **Skill mode** (primary): the analysis is done by the Claude Code session the user is already in. No
   API key, no nested `claude` process, no access to Claude Code credentials.
-- **Headless mode** (standalone CLI): uses Claude Code's supported non-interactive interface. Before
-  Phase 3 ships it, it must be verified how that interface authenticates and bills. If an
-  `ANTHROPIC_API_KEY` (or another setting that switches to API billing) is present, the CLI must stop and
-  ask rather than continue silently.
+- **Headless mode** (standalone CLI): `claude -p --output-format json --json-schema …` with no tools, no
+  MCP, and an empty working directory. `claude auth status --json` is checked first: only a Claude
+  subscription sign-in proceeds; an API key or third-party provider stops with an explanation unless the
+  user passes `--allow-api-billing`. Inside a Claude Code session headless mode is refused. See
+  [ai-reporting.md](ai-reporting.md).
 
 ## Data locations
 

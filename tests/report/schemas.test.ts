@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ReportRecordSchema } from '../../src/checkpoints/types';
 import { IssueKeySchema } from '../../src/git/types';
-import { StructuredReportSchema } from '../../src/report/schema';
+import { StructuredReportV1Schema } from '../../src/report/schema';
 
 describe('domain schemas', () => {
   it.each([
@@ -14,8 +14,8 @@ describe('domain schemas', () => {
     expect(IssueKeySchema.safeParse(key).success).toBe(valid);
   });
 
-  it('accepts a minimal structured report and applies defaults', () => {
-    const report = StructuredReportSchema.parse({
+  it('accepts a minimal v1 report and applies defaults', () => {
+    const report = StructuredReportV1Schema.parse({
       schemaVersion: 1,
       issueKey: 'LSND-1234',
       language: 'uk',
@@ -35,9 +35,9 @@ describe('domain schemas', () => {
 
   it('rejects reports with extra fields or no changes', () => {
     const base = { schemaVersion: 1, issueKey: 'LSND-1', language: 'en', summary: 'x' };
-    expect(StructuredReportSchema.safeParse({ ...base, changes: [] }).success).toBe(false);
+    expect(StructuredReportV1Schema.safeParse({ ...base, changes: [] }).success).toBe(false);
     expect(
-      StructuredReportSchema.safeParse({
+      StructuredReportV1Schema.safeParse({
         ...base,
         changes: [{ kind: 'added', subject: 's', description: 'd', files: [] }],
         mention: '@all',

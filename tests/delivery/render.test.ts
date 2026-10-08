@@ -2,19 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { findReportMarkers } from '../../src/adf/footer';
 import { escapeMarkdown, renderTextReport } from '../../src/delivery/render';
 import { REPORT_LABELS } from '../../src/localization/catalog';
-import { StructuredReportSchema } from '../../src/report/schema';
+import { finishedReport } from '../fixtures/report';
 
 const REPORT_ID = '3f2a9c1e-0000-4000-8000-000000000001';
 
 function render(overrides: Record<string, unknown> = {}, language: 'en' | 'uk' = 'en') {
-  const report = StructuredReportSchema.parse({
-    schemaVersion: 1,
-    issueKey: 'ABC-1',
-    language,
-    summary: 'Summary text.',
-    changes: [{ kind: 'fixed', subject: 'Parser', description: 'Fixed it.', files: [] }],
-    ...overrides,
-  });
+  const report = finishedReport({ issueKey: 'ABC-1', language, ...overrides });
   return renderTextReport({
     report,
     files: [
@@ -49,7 +42,7 @@ describe('text report renderer', () => {
   it('keeps model text from becoming links, images, headings, or HTML', () => {
     const { markdown } = render({
       summary: '# Heading\n\n[click](https://evil.example) ![img](x) <b>bold</b> *em* | cell',
-      testing: ['1. not a list'],
+      limitations: ['1. not a list'],
     });
     expect(markdown).toContain('\\# Heading');
     expect(markdown).toContain(
@@ -59,10 +52,48 @@ describe('text report renderer', () => {
     expect(escapeMarkdown('see issue #12 (done)')).toBe('see issue #12 (done)');
   });
 
-  it('omits empty optional sections and uses Ukrainian labels', () => {
-    const { markdown } = render({ risks: ['Ризик.'] }, 'uk');
+  it('states that tests were not run, and uses Ukrainian labels', () => {
+    const { markdown } = render({ limitations: ['Ризик.'] }, 'uk');
     expect(markdown).toContain('## Звіт про реалізацію #3');
     expect(markdown).toContain('### Відомі обмеження\n\n- Ризик.');
-    expect(markdown).not.toContain('Тестування');
+    expect(markdown).toContain(
+      '### Тестування та перевірки\n\nДля цього звіту тести не запускалися.',
+    );
+  });
+
+  it('adds file notes, endpoints, test runs, and a coverage warning', () => {
+    const { markdown } = render({
+      completedWork: [
+        {
+          kind: 'added',
+          category: 'api-integration',
+          subject: 'Client',
+          description: 'Calls the API.',
+          files: ['src/b.ts'],
+          endpoints: [{ method: 'POST', endpoint: '/api/items' }],
+        },
+      ],
+      modifiedFiles: [{ path: 'src/b.ts', note: 'Uses the *new* client.' }],
+      testing: {
+        status: 'failed',
+        notes: [],
+        runs: [{ command: 'pnpm test', outcome: 'failed', source: 'git2jira' }],
+      },
+      changeCoverage: {
+        totalFiles: 4,
+        analyzedFiles: 3,
+        truncatedFiles: ['src/b.ts'],
+        omittedFiles: [],
+        ignoredFiles: [],
+        chunks: 1,
+        complete: false,
+      },
+    });
+    expect(markdown).toContain('**Client** (Added): Calls the API. — `POST /api/items`');
+    expect(markdown).toContain('- `src/b.ts` — Uses the \\*new\\* client.');
+    expect(markdown).toContain(
+      'The recorded test runs failed.\n\n- `pnpm test`: failed (run by Git2Jira)',
+    );
+    expect(markdown).toContain('Only 3 of 4 changed files were analyzed in full');
   });
 });

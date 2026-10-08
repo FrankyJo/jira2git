@@ -58,5 +58,6 @@ API endpoints, HTTP methods, commit SHAs, and code.
 
 1. Add the code to `SUPPORTED_LANGUAGES` and `LANGUAGE_NAMES`.
 2. Add a `REPORT_LABELS` entry.
-3. Add model guidance for that language (Phase 3).
+3. Add model guidance for that language (`LANGUAGE_GUIDANCE` in `src/ai/prompt.ts`) and the language
+   check in `src/report/validate.ts`.
 4. Extend tests.

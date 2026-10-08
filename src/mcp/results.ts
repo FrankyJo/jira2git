@@ -150,18 +150,32 @@ export function parseCommentListing(raw: unknown): CommentListing {
 /** The issue a lookup returned: Jira's `{ id, key, fields: { summary } }`, possibly wrapped. */
 export function parseIssueLookup(
   raw: unknown,
-): { id: string; key: string; summary: string } | undefined {
+): { id: string; key: string; summary: string; description?: string } | undefined {
   const IssueShape = z.looseObject({
     id: IdSchema,
     key: z.string().min(1).max(100),
-    fields: z.looseObject({ summary: z.string().optional() }).optional(),
+    fields: z
+      .looseObject({ summary: z.string().optional(), description: z.unknown().optional() })
+      .optional(),
   });
   const value = unwrapToolResult(raw);
   const direct = IssueShape.safeParse(value);
   const wrapped = z.looseObject({ issue: IssueShape }).safeParse(value);
   const issue = direct.success ? direct.data : wrapped.success ? wrapped.data.issue : undefined;
   if (!issue) return undefined;
-  return { id: String(issue.id), key: issue.key, summary: issue.fields?.summary ?? '' };
+  const described = issue.fields?.description;
+  const description =
+    typeof described === 'string'
+      ? described.slice(0, 20_000)
+      : described
+        ? adfToPlainText(described, 20_000)
+        : '';
+  return {
+    id: String(issue.id),
+    key: issue.key,
+    summary: issue.fields?.summary ?? '',
+    ...(description ? { description } : {}),
+  };
 }
 
 /** Account id from `atlassianUserInfo` (`account_id`) or a Jira user (`accountId`). */

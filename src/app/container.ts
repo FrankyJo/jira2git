@@ -1,4 +1,4 @@
-import type { ReportGenerator } from '../ai/types';
+import type { ReportGeneratorFactory } from '../ai/types';
 import type { AdfRenderer } from '../adf/types';
 import type { GitRefs } from '../checkpoints/refs';
 import type { LineageStore } from '../checkpoints/store';
@@ -41,7 +41,8 @@ export interface ServiceRegistry {
   credentialStore: CredentialStore;
   jiraConnections: JiraConnectionManager;
   planStore: PlanStore;
-  reportGenerator: ReportGenerator;
+  /** Headless report writer; the session hand-off needs none. */
+  reportGenerator: ReportGeneratorFactory;
   labelCatalog: LabelCatalog;
   adfRenderer: AdfRenderer;
   publicationService: JiraPublicationService;

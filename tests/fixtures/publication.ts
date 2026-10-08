@@ -16,6 +16,10 @@ import { MemoryCredentialStore, MockJira, SITE_URL, type MockAccount } from './m
 export const ISSUE = 'LSND-1234';
 export const SETTLE_MS = 60_000;
 
+/**
+ * A v1 report (the Phase 2/2.5 format, still accepted). It names no files: the
+ * change set differs per test, and naming a file outside it is rejected.
+ */
 export function sampleReport(language: Language = 'en', overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: 1,
@@ -27,10 +31,41 @@ export function sampleReport(language: Language = 'en', overrides: Record<string
         kind: 'added',
         subject: 'UserProfileView',
         description: language === 'uk' ? 'Новий компонент.' : 'New component.',
-        files: ['src/UserProfileView.vue'],
+        files: [],
       },
     ],
     testing: ['pnpm test'],
+    ...overrides,
+  };
+}
+
+/** v2 writer content for a change set; `files` are paths of that change set. */
+export function sampleContent(
+  language: Language = 'en',
+  overrides: Record<string, unknown> = {},
+  files: string[] = [],
+) {
+  return {
+    schemaVersion: 2,
+    issueKey: ISSUE,
+    language,
+    summary:
+      language === 'uk'
+        ? 'Реалізовано сторінку профілю користувача.'
+        : 'Implemented the user profile page.',
+    completedWork: [
+      {
+        kind: 'added',
+        category: 'feature',
+        subject: 'UserProfileView',
+        description:
+          language === 'uk'
+            ? 'Додано компонент для перегляду профілю.'
+            : 'Added a component that shows the profile.',
+        files,
+      },
+    ],
+    testing: { status: 'not-run', notes: [] },
     ...overrides,
   };
 }

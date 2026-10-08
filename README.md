@@ -2,11 +2,10 @@
 
 Turn Git changes into professional, incremental Jira implementation reports, written by Claude Code.
 
-> **Status: Phase 2.5 (manual reports and Atlassian MCP).** Configuration, the incremental Git
-> analysis, the manual and MCP report workflows (`git2jira report …`, `git2jira mcp …`), API-token
-> sign-in, history, and recovery work. What is missing: the AI step that writes the report text
-> (Phase 3) and the installed `/jira-report` Skill that drives everything from Claude Code (Phase 4).
-> Today you hand `git2jira report submit` a structured report written by any means. See
+> **Status: Phase 3 (AI reporting).** `git2jira report` analyzes the changes since the last confirmed
+> report, has Claude Code write the report (your current session, or `claude -p` from a terminal with
+> your own sign-in), validates it against Git, previews it, and delivers it (manual, MCP, or API token).
+> Missing: the installed `/jira-report` Skill (Phase 4) and the setup wizard (Phase 5). See
 > [docs/roadmap.md](docs/roadmap.md).
 
 ## What it will do
@@ -102,20 +101,27 @@ Git2Jira never switches modes on its own: if MCP is unavailable, it stops and of
 ### Manual mode
 
 ```sh
-git2jira report prepare                       # snapshot of the changes since the last confirmed report
-git2jira report submit --report <id> --input report.json   # validate and render (report.json: see below)
-git2jira report copy                          # to the clipboard (or: export, show)
-#   … paste it as a new comment in Jira …
-git2jira report confirm --report <id> --digest <sha256>    # asks "did you paste it?"
+git2jira report                               # analyze, write, preview; then copy / save / confirm
+git2jira report --language uk                 # Ukrainian report
+git2jira report --dry-run                     # preview only: nothing saved, no checkpoint moved
+git2jira report --test-command "pnpm test"    # run tests and cite the verified result
+git2jira report pending                       # unfinished reports; "git2jira report" resumes one
 ```
+
+Step by step (what the Skill uses): `report prepare --json` → write the JSON → `report submit --report
+<id> --input report.json` → `report copy` / `export` → paste into Jira → `report confirm --report <id>
+--digest <sha256>`.
 
 `report pending`, `report cancel`, `report recover`, and `report revoke` (withdraw a confirmation made by
 mistake) manage unfinished reports. Copying or exporting never moves the checkpoint; only `confirm` does,
 and it is recorded as **user-attested**: Git2Jira has not seen the comment in Jira. Changes you make after
 the report was prepared stay for the next report.
 
-The report text comes from a structured JSON report (`src/report/schema.ts`); writing it with Claude is
-Phase 3/4. Until then, any tool or person can write it.
+In a terminal the report is written by Claude Code in non-interactive mode with your own Claude sign-in;
+Git2Jira stops instead of using API-key billing unless you pass `--allow-api-billing`. Inside Claude Code
+the current session writes it; no second Claude Code is started. Every report is checked against Git: it
+cannot name files outside the change set, and it cannot claim tests, deployments, or approvals that did
+not happen. See [docs/ai-reporting.md](docs/ai-reporting.md).
 
 ### Atlassian MCP mode
 
@@ -168,8 +174,8 @@ git2jira status --json
 | `logout`      | Remove Jira credentials                                      | Now       |
 | `connections` | List Jira connections and check their credentials            | Now       |
 | `status`      | Preview the issue, baseline, and changes for the next report | Now       |
+| `report`      | Write, preview, and deliver the next report (all modes)      | Now       |
 | `report …`    | Prepare, submit, copy, confirm, publish (manual and MCP)     | Now       |
-| `report`      | End-to-end generation of the report text                     | Phase 3   |
 | `mcp`         | Register and check the Atlassian MCP connection              | Now       |
 | `history`     | List published reports, cross-checked with Jira              | Now       |
 | `recover`     | Repair interrupted publications and lost checkpoints         | Now       |

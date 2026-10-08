@@ -27,6 +27,8 @@ import { DraftStore } from '../delivery/draft';
 import { ReportDeliveryService, openDraftRefs } from '../delivery/service';
 import { ClaudeCliRegistry } from '../mcp/claude-code';
 import { McpVerificationStore } from '../mcp/setup';
+import { ClaudeCodeHeadlessProvider } from '../ai/claude-headless';
+import { ReportEngine } from '../ai/engine';
 import { ServiceContainer } from './container';
 
 /** Composition root for the production CLI. Later phases register their services here. */
@@ -117,6 +119,11 @@ export function createDefaultContainer(): ServiceContainer {
         }),
     )
     .register('claudeMcpRegistry', (c) => new ClaudeCliRegistry(c.resolve('processRunner')))
+    .register(
+      'reportGenerator',
+      (c) => (options) =>
+        new ReportEngine(new ClaudeCodeHeadlessProvider(c.resolve('processRunner'), options)),
+    )
     .register(
       'mcpVerificationStore',
       (c) =>

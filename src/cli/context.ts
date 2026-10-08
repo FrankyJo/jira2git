@@ -14,6 +14,11 @@ export interface CliContext {
   stdin?: AsyncIterable<Buffer | string>;
   /** Whether prompts may be shown (stdin and stdout are terminals). */
   interactive?: boolean;
+  /**
+   * Process environment, for detecting a Claude Code session (`CLAUDECODE`) and for the
+   * headless report writer. Tests pass their own; absent means an ordinary terminal.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 export function println(stream: OutputStream, line = ''): void {

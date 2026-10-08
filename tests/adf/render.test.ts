@@ -5,7 +5,8 @@ import { adfToPlainText } from '../../src/adf/text';
 import type { AdfDocument, ReportFile, ReportFooter } from '../../src/adf/types';
 import { AdfValidationError, validateAdfDocument } from '../../src/adf/validate';
 import { REPORT_LABELS } from '../../src/localization/catalog';
-import { StructuredReportSchema, type StructuredReport } from '../../src/report/schema';
+import type { StructuredReport } from '../../src/report/schema';
+import { finishedReport } from '../fixtures/report';
 
 const FOOTER: ReportFooter = {
   reportId: '3f2a9c1e-1b2c-4d3e-8f40-5a6b7c8d9e0f',
@@ -15,26 +16,33 @@ const FOOTER: ReportFooter = {
   toolVersion: '0.0.0-test',
 };
 
-function report(overrides: Partial<StructuredReport> = {}): StructuredReport {
-  return StructuredReportSchema.parse({
-    schemaVersion: 1,
-    issueKey: 'LSND-1234',
-    language: 'en',
+function report(overrides: Record<string, unknown> = {}): StructuredReport {
+  return finishedReport({
     summary: 'Added the profile page.\n\nWired it to `GET /api/users/{id}`.',
-    changes: [
+    completedWork: [
       {
         kind: 'added',
+        category: 'ui',
         subject: 'UserProfileView',
         description: 'New view rendering useUserProfile() data.\nHandles loading state.',
         files: ['src/views/UserProfileView.vue'],
       },
+      {
+        kind: 'added',
+        category: 'api-integration',
+        subject: 'Users API',
+        description: 'Fetches a user.',
+        files: [],
+        endpoints: [{ method: 'GET', endpoint: '/api/users/{id}' }],
+      },
     ],
-    apiChanges: [
-      { kind: 'added', method: 'GET', endpoint: '/api/users/{id}', description: 'Fetches a user.' },
-    ],
-    testing: ['pnpm test: 42 passed'],
-    risks: ['No pagination yet.'],
-    followUps: ['Add avatar upload.'],
+    createdFiles: [{ path: 'src/views/UserProfileView.vue', note: 'Profile page.' }],
+    testing: {
+      status: 'passed',
+      notes: ['42 tests passed.'],
+      runs: [{ command: 'pnpm test', outcome: 'passed', source: 'git2jira' }],
+    },
+    limitations: ['No pagination yet.', 'Add avatar upload.'],
     ...overrides,
   });
 }
@@ -140,9 +148,10 @@ describe('StructuredReportRenderer', () => {
     const doc = renderer.render({
       report: report({
         summary: '[click](https://evil.example) @admin <b>x</b> {color:red}',
-        changes: [
+        completedWork: [
           {
             kind: 'fixed',
+            category: 'bug-fix',
             subject: 'a\u0000b',
             description: 'line1\r\nline2\u001b[31m',
             files: [],
@@ -168,7 +177,11 @@ describe('StructuredReportRenderer', () => {
       path: `f/${String(i).padStart(4, '0')}.ts`,
     }));
     const doc = renderer.render({
-      report: report({ testing: [], risks: [], followUps: [], apiChanges: [] }),
+      report: report({
+        language: 'uk',
+        testing: { status: 'not-run', notes: [], runs: [] },
+        limitations: [],
+      }),
       files: many,
       labels: REPORT_LABELS.uk,
       footer: FOOTER,
@@ -178,8 +191,10 @@ describe('StructuredReportRenderer', () => {
       'Підсумок',
       'Виконані роботи',
       'Створені файли',
+      'Тестування та перевірки',
     ]);
     expect(adfToPlainText(doc)).toContain('… та ще 7');
+    expect(adfToPlainText(doc)).toContain('Для цього звіту тести не запускалися.');
   });
 });
 

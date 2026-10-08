@@ -16,7 +16,8 @@ import {
   canTransition,
   type PublicationStatus,
 } from '../publication/plan';
-import { StructuredReportSchema } from '../report/schema';
+import { TestEvidenceSchema } from '../ai/analysis';
+import { StoredReportSchema } from '../report/schema';
 import { stateDir } from '../snapshots/engine';
 import { SnapshotSchema } from '../snapshots/types';
 
@@ -120,7 +121,24 @@ const DraftCore = {
   changesDigest: DigestSchema,
   /** Optional context typed by the user. Passed to the report writer as data. */
   userContext: z.string().max(4000).optional(),
-  report: StructuredReportSchema.optional(),
+  /** Jira issue title and description, if known. Untrusted; never required. */
+  issueContext: z
+    .strictObject({
+      title: z.string().max(2000).optional(),
+      description: z.string().max(20_000).optional(),
+    })
+    .optional(),
+  /** Test results the report may cite (Phase 3). */
+  testEvidence: z.array(TestEvidenceSchema).max(20).optional(),
+  report: StoredReportSchema.optional(),
+  /** Who wrote the current report text and what the preview warned about. */
+  generation: z
+    .strictObject({
+      by: z.enum(['session', 'headless', 'external']),
+      at: z.iso.datetime(),
+      warnings: z.array(z.string().max(1000)).max(50),
+    })
+    .optional(),
   rendered: z
     .strictObject({ markdown: z.string(), text: z.string(), adf: AdfDocumentSchema })
     .optional(),

@@ -4,6 +4,8 @@ export interface ProcessOptions {
   /** Written to stdin, then stdin is closed. Secrets travel here, never in argv. */
   input?: string;
   env?: Readonly<Record<string, string | undefined>>;
+  /** Working directory of the child; the caller's by default. */
+  cwd?: string;
   timeoutMs?: number;
   maxOutputBytes?: number;
 }
@@ -38,6 +40,7 @@ export class SpawnProcessRunner implements ProcessRunner {
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
           ...(options.env ? { env: options.env } : {}),
+          ...(options.cwd ? { cwd: options.cwd } : {}),
         });
       } catch {
         resolve({ stdout: '', stderr: '', exitCode: null, notFound: true, timedOut: false });

@@ -15,6 +15,8 @@ export function createProgram(ctx: CliContext): Command {
     .version(VERSION, '-v, --version', 'print the version')
     .helpOption('-h, --help', 'show help')
     .showHelpAfterError('(run "git2jira --help" for usage)')
+    // Lets "report" have options of its own without taking them from its subcommands.
+    .enablePositionalOptions()
     .configureOutput({
       writeOut: (text) => ctx.stdout.write(text),
       writeErr: (text) => ctx.stderr.write(text),

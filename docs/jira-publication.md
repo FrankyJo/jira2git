@@ -6,8 +6,8 @@ Status: **API-token publication implemented in Phase 2; manual and Atlassian MCP
 Tests: `tests/jira`, `tests/adf`, `tests/publication`, `tests/credentials`, `tests/cli/jira-commands.test.ts`
 (all against a mocked Jira server; no test talks to a real site).
 
-The `git2jira report` command that drives this flow end to end arrives with the AI layer (Phase 3) and
-the Skill (Phase 4). Phase 2 delivers the service it will call (`JiraPublicationService`) and the
+The `git2jira report` command drives this flow end to end since Phase 3 (see
+[ai-reporting.md](ai-reporting.md)); the Skill arrives in Phase 4. Phase 2 delivers the service it will call (`JiraPublicationService`) and the
 `login`, `logout`, `connections`, `history`, `recover`, and `status --jira` commands.
 
 ## Jira REST client
@@ -434,5 +434,7 @@ Safe to pre-approve in a Skill (no Jira write, no checkpoint move): `report prep
 `pending`, `export`, `copy`, `mcp status`, `mcp verify`. Never pre-approved: `report confirm`, `revoke`,
 `cancel`, `publish`, `record-result`, `reconcile`, `fallback`, `mcp setup`, and the MCP comment tool.
 
-`git2jira report` without a subcommand (end-to-end generation) and API-token reports through `report`
-are Phase 3.
+`git2jira report` without a subcommand (Phase 3) writes, previews, and delivers a report end to end,
+in every mode; see [ai-reporting.md](ai-reporting.md). `report prepare --json` now also includes the
+analysis `coverage`, `testStatus`, `warnings`, and the `generation` request (instructions, parts,
+schema); `report submit` accepts schema v2 content (and v1) and validates it against Git's facts.

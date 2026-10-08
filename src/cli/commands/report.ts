@@ -1,9 +1,11 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { findRepositoryRoot } from '../../config/paths';
 import type { GlobalConfig, RepoConfig } from '../../config/schema';
-import { Git2JiraError, NotImplementedError, UsageError } from '../../core/errors';
+import { packageWarnings } from '../../ai/engine';
+import { buildSessionRequest } from '../../ai/prompt';
+import { Git2JiraError, UsageError } from '../../core/errors';
 import { terminalSafe, terminalSafeLine } from '../../core/sanitize';
 import { copyToClipboard } from '../../delivery/clipboard';
 import { isOpen, type Draft, type ManualDraft, type McpDraft } from '../../delivery/draft';
@@ -14,6 +16,7 @@ import { SUPPORTED_LANGUAGES } from '../../localization/languages';
 import { resolveLanguage } from '../../localization/resolve';
 import { DEFAULT_MCP_SERVER_NAME } from '../../mcp/tools';
 import { println, type CliContext } from '../context';
+import { exportDraft, runReport, type ReportRunOptions } from './report-run';
 
 const MAX_INPUT_BYTES = 10 * 1024 * 1024;
 
@@ -29,12 +32,43 @@ const MAX_INPUT_BYTES = 10 * 1024 * 1024;
  */
 export function createReportCommand(ctx: CliContext): Command {
   const report = new Command('report')
-    .description('Prepare, review, and deliver incremental Jira reports (manual or MCP mode).')
-    .action(() => {
-      throw new NotImplementedError(
-        '"git2jira report" without a subcommand (end-to-end report generation)',
-        3,
-      );
+    .description(
+      'Write an incremental Jira report of the changes since the last confirmed one, preview it, and deliver it.',
+    )
+    // Options of "report" itself must come before a subcommand, so the subcommands keep theirs.
+    .enablePositionalOptions()
+    .option('--dry-run', 'analyze and write the report, but save nothing and move nothing')
+    .addOption(
+      new Option('-m, --mode <mode>', 'delivery mode for this report').choices(DELIVERY_MODES),
+    )
+    .addOption(new Option('-l, --language <code>', 'report language').choices(SUPPORTED_LANGUAGES))
+    .option('-i, --issue <key>', 'Jira issue key (default: detected from the branch name)')
+    .option('-b, --base <branch>', 'base branch for the first report of an issue')
+    .option('--site <url>', 'Jira site URL (manual: optional)')
+    .option('-c, --connection <name>', 'API-token mode: Jira connection to use')
+    .option('--context <text>', 'optional context for the report writer (treated as data)')
+    .option('--issue-title <text>', 'Jira issue title, if you want the writer to know it')
+    .option('--issue-description <file>', 'file with the Jira issue description (treated as data)')
+    .option(
+      '--test-command <command>',
+      'run this test command (no shell) and report its result; repeatable',
+      (value: string, previous: string[] | undefined) => [...(previous ?? []), value],
+    )
+    .option('--test-results <file>', 'test results to cite (reported, not verified)')
+    .addOption(
+      new Option('--ai <writer>', 'who writes the report')
+        .choices(['auto', 'session', 'headless'])
+        .default('auto'),
+    )
+    .option('--allow-api-billing', 'headless: accept API-key or third-party billing for this run')
+    .option('--model <name>', 'headless: Claude model alias or name')
+    .option('--accept-branch-change', 'continue history that was recorded on another branch')
+    .option('--server <name>', 'MCP: Claude Code MCP server name')
+    .option('--cloud-id <id>', 'MCP: Atlassian cloud id of the site')
+    .option('--issue-lookup <file>', 'MCP: raw result of the issue lookup tool for this key')
+    .option('--json', 'print machine-readable JSON')
+    .action(async (options: ReportRunOptions) => {
+      await runReport(ctx, options);
     });
   const service = () => ctx.container.resolve('deliveryService');
 
@@ -62,9 +96,9 @@ export function createReportCommand(ctx: CliContext): Command {
         globalConfig,
       });
       if (mode === 'api-token') {
-        throw new NotImplementedError(
-          'Preparing API-token reports through "git2jira report" (the API-token publisher itself works)',
-          3,
+        throw new UsageError(
+          'API-token reports are written and published interactively by "git2jira report --mode api-token". ' +
+            '"report prepare" is the Skill bridge for manual and MCP modes.',
         );
       }
       const { language } = resolveLanguage({
@@ -134,8 +168,9 @@ export function createReportCommand(ctx: CliContext): Command {
         return;
       }
 
-      const { draft, changeSet } = outcome;
+      const { draft, changeSet, analysis } = outcome;
       if (options.json) {
+        const generation = buildSessionRequest(analysis);
         println(
           ctx.stdout,
           JSON.stringify(
@@ -156,9 +191,19 @@ export function createReportCommand(ctx: CliContext): Command {
                 issueSummary: draft.mode === 'mcp' ? draft.issue.summary : null,
               },
               reportContract: {
-                schemaVersion: 1,
+                // v2 (schemaVersion 2) is what the writer should produce; v1 is still accepted.
+                schemaVersion: 2,
+                accepts: [1, 2],
                 issueKey: draft.issueKey,
                 language: draft.language,
+              },
+              coverage: analysis.coverage,
+              testStatus: analysis.testStatus,
+              warnings: packageWarnings(analysis),
+              generation: {
+                instructions: generation.instructions,
+                parts: generation.parts,
+                schema: generation.schema,
               },
             },
             null,
@@ -188,6 +233,7 @@ export function createReportCommand(ctx: CliContext): Command {
         ctx.cwd,
         options.report,
         await readJson(ctx, options.input),
+        { by: ctx.env?.CLAUDECODE ? 'session' : 'external' },
       );
       if (options.json) {
         println(
@@ -197,6 +243,8 @@ export function createReportCommand(ctx: CliContext): Command {
         return;
       }
       println(ctx.stdout, terminalSafe(draft.rendered?.markdown ?? '', 100_000));
+      for (const warning of draft.generation?.warnings ?? [])
+        println(ctx.stderr, `Warning: ${terminalSafeLine(warning, 400)}`);
       println(ctx.stdout, `Digest: ${draft.reportDigest ?? ''}`);
       for (const line of nextSteps(draft)) println(ctx.stdout, `  ${line}`);
     });
@@ -215,7 +263,16 @@ export function createReportCommand(ctx: CliContext): Command {
       if (options.format === 'json') {
         println(
           ctx.stdout,
-          JSON.stringify({ ...draftSummary(draft), events: draft.events }, null, 2),
+          JSON.stringify(
+            {
+              ...draftSummary(draft),
+              events: draft.events,
+              warnings: draft.generation?.warnings ?? [],
+              report: draft.report ?? null,
+            },
+            null,
+            2,
+          ),
         );
         return;
       }
@@ -271,17 +328,7 @@ export function createReportCommand(ctx: CliContext): Command {
     )
     .action(async (options: { report?: string; output?: string; format: 'markdown' | 'text' }) => {
       const draft = requireManual(await pick(ctx, options.report));
-      if (!draft.rendered) throw new Git2JiraError(`Report ${draft.reportId} has no text yet.`);
-      const repository = await ctx.container.resolve('repositoryLocator').locate(ctx.cwd);
-      const extension = options.format === 'markdown' ? 'md' : 'txt';
-      const file = options.output
-        ? path.resolve(ctx.cwd, options.output)
-        : path.join(
-            ctx.container.resolve('draftStore').exportDir(repository),
-            `${draft.issueKey}-report-${String(draft.sequence)}-${draft.language}.${extension}`,
-          );
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, draft.rendered[options.format], { mode: 0o600 });
+      const file = await exportDraft(ctx, draft, options.output, options.format);
       const updated = await service().markPresented(ctx.cwd, draft.reportId, 'file', file);
       println(ctx.stdout, `Wrote report #${String(updated.sequence)} to ${file}`);
       for (const line of nextSteps(updated)) println(ctx.stdout, `  ${line}`);
@@ -469,7 +516,7 @@ interface PrepareOptions {
   json?: boolean;
 }
 
-async function configs(
+export async function configs(
   ctx: CliContext,
 ): Promise<{ repoConfig: RepoConfig; globalConfig: GlobalConfig }> {
   const store = ctx.container.resolve('configStore');
@@ -528,7 +575,7 @@ function siteLabel(draft: Draft): string {
     : draft.site.url;
 }
 
-function draftSummary(draft: Draft) {
+export function draftSummary(draft: Draft) {
   return {
     reportId: draft.reportId,
     mode: draft.mode,
@@ -563,7 +610,7 @@ function mcpSummary(draft: McpDraft) {
   };
 }
 
-function nextSteps(draft: Draft): string[] {
+export function nextSteps(draft: Draft): string[] {
   const id = draft.reportId;
   if (draft.mode === 'manual') {
     switch (draft.status) {

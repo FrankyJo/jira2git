@@ -1,4 +1,10 @@
-import { MAX_FILES_PER_SECTION } from '../adf/render';
+import {
+  MAX_FILES_PER_SECTION,
+  endpointLabel,
+  fileNotes,
+  groupFiles,
+  limitationLines,
+} from '../adf/render';
 import type { ReportFile } from '../adf/types';
 import type { ReportLabels } from '../localization/catalog';
 import type { StructuredReport } from '../report/schema';
@@ -80,45 +86,39 @@ function render({ report, files, labels, marker }: TextRenderInput, style: Style
 
   blocks.push(style.heading(labels.completedWork));
   blocks.push(
-    list([
-      ...report.changes.map(
-        (c) =>
-          `${style.strong(cleanLine(c.subject))} (${labels.changeKinds[c.kind]}): ${style.prose(clean(c.description).trim())}`,
-      ),
-      ...report.apiChanges.map(
-        (a) =>
-          `${style.code(cleanLine(a.method ? `${a.method} ${a.endpoint}` : a.endpoint))} (${labels.changeKinds[a.kind]}): ${style.prose(clean(a.description).trim())}`,
-      ),
-    ]),
+    list(
+      report.completedWork.map((work) => {
+        const endpoints = work.endpoints.map((e) => style.code(cleanLine(endpointLabel(e))));
+        return (
+          `${style.strong(cleanLine(work.subject))} (${labels.changeKinds[work.kind]}): ${style.prose(clean(work.description).trim())}` +
+          (endpoints.length > 0 ? ` — ${endpoints.join(', ')}` : '')
+        );
+      }),
+    ),
   );
 
-  const sorted = [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const groups: [string, ReportFile[]][] = [
-    [labels.createdFiles, sorted.filter((f) => f.status === 'added' || f.status === 'copied')],
-    [
-      labels.modifiedFiles,
-      sorted.filter((f) => f.status === 'modified' || f.status === 'type-changed'),
-    ],
-    [
-      labels.deletedOrRenamedFiles,
-      sorted.filter((f) => f.status === 'deleted' || f.status === 'renamed'),
-    ],
-  ];
-  for (const [title, group] of groups) {
-    if (group.length === 0) continue;
-    const shown = group.slice(0, MAX_FILES_PER_SECTION).map((f) => fileLine(f, labels, style));
+  const notes = fileNotes(report);
+  for (const [title, group] of groupFiles(files, labels)) {
+    const shown = group.slice(0, MAX_FILES_PER_SECTION).map((f) => {
+      const note = notes.get(f.path);
+      return fileLine(f, labels, style) + (note ? ` — ${style.prose(clean(note).trim())}` : '');
+    });
     const hidden = group.length - shown.length;
     if (hidden > 0) shown.push(labels.moreItems.replace('{count}', String(hidden)));
     blocks.push(style.heading(title), list(shown));
   }
 
-  if (report.testing.length > 0) {
-    blocks.push(
-      style.heading(labels.testing),
-      list(report.testing.map((t) => style.prose(clean(t).trim()))),
-    );
-  }
-  const limitations = [...report.risks, ...report.followUps];
+  blocks.push(style.heading(labels.testing), style.prose(labels.testStatus[report.testing.status]));
+  const testing = [
+    ...report.testing.runs.map(
+      (run) =>
+        `${style.code(cleanLine(run.command))}: ${labels.testOutcomes[run.outcome]} (${labels.testSources[run.source]})`,
+    ),
+    ...report.testing.notes.map((t) => style.prose(clean(t).trim())),
+  ];
+  if (testing.length > 0) blocks.push(list(testing));
+
+  const limitations = limitationLines(report, labels);
   if (limitations.length > 0) {
     blocks.push(
       style.heading(labels.knownLimitations),

@@ -6,7 +6,7 @@
 | 1     | Git snapshots and incremental checkpoints               | Done    |
 | 2     | Jira integration, authentication, ADF, and publication  | Done    |
 | 2.5   | Manual reports and Atlassian MCP integration            | Done    |
-| 3     | AI reporting engine and multilingual reports            | Planned |
+| 3     | AI reporting engine and multilingual reports            | Done    |
 | 4     | Claude Code Skill `/jira-report`                        | Planned |
 | 5     | Interactive installer, configuration, and npm packaging | Planned |
 | 6     | Final QA, security audit, and release preparation       | Planned |
@@ -64,17 +64,25 @@
 - `git2jira mcp setup|status|verify` via `claude mcp` (never overwrites existing servers).
 - Installer steps for the Phase 5 wizard: report language, "How do you want to use Jira?" with manual
   fallback.
-- Not done here: the Skill that drives the bridge (Phase 4), AI report generation (Phase 3), and any test
+- Not done here: the Skill that drives the bridge (Phase 4), AI report generation (done in Phase 3), and any test
   against a real Rovo MCP server. See [jira-publication.md](jira-publication.md#what-has-and-has-not-been-verified).
 
-## Phase 3: AI reporting
+## Phase 3: AI reporting (done)
 
-- `ReportGenerator` for Skill and headless modes.
-- Prompt design that treats repository content as untrusted data.
-- End-to-end `git2jira report` (generation), and API-token reports through the `report` bridge on top of
-  `JiraPublicationService`.
-- Localized labels and language guidance for `en` and `uk`.
-- Headless billing and authentication verification.
+- Report schema v2 (`completedWork`, file sections with notes, evidence-based `testing`, `limitations`,
+  `uncertainties`, `changeCoverage`, `snapshotIdentity`); v1 still accepted.
+- Validated analysis package: incremental diff of the prepared snapshot, secret-file exclusion and value
+  redaction, nonce-fenced untrusted data, injection warnings, chunking with coverage tracking.
+- `AIReportProvider` with two contexts: the current Claude Code session (hand-off, no nested process) and
+  headless `claude -p` with sign-in and billing checks (`--allow-api-billing` to opt in).
+- `ReportEngine`: per-chunk generation, one repair attempt, consolidation, deterministic merge fallback.
+- `finalizeReport`: rejects foreign files, issue/language/snapshot changes, invented tests, deployments,
+  approvals, and wrong-language text; file lists from Git.
+- Renderers (Markdown, plain text, ADF) for v2 with localized testing and coverage lines; terminal preview.
+- `git2jira report` end to end: `--dry-run`, `--language`, `--issue`, `--mode`, `--test-command`,
+  `--test-results`, `--issue-title`, `--issue-description`, `--ai`; manual actions (copy, export, confirm,
+  regenerate, keep, cancel), pending report resume; MCP through the session; API-token interactive publish.
+- See [ai-reporting.md](ai-reporting.md).
 
 ## Phase 4: Claude Code Skill
 

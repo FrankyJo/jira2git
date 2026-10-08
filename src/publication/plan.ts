@@ -9,7 +9,7 @@ import { ConnectionNameSchema } from '../config/schema';
 import { Git2JiraError } from '../core/errors';
 import { IssueKeySchema, type RepositoryInfo } from '../git/types';
 import { LanguageSchema } from '../localization/languages';
-import { StructuredReportSchema } from '../report/schema';
+import { StoredReportSchema } from '../report/schema';
 import { stateDir } from '../snapshots/engine';
 import { SnapshotSchema } from '../snapshots/types';
 
@@ -103,7 +103,7 @@ export const StoredPlanSchema = z.strictObject({
   /** Changed paths from Git, shown in the preview and rendered into the comment. */
   files: z.array(ReportFileSchema),
   changesDigest: DigestSchema,
-  report: StructuredReportSchema.optional(),
+  report: StoredReportSchema.optional(),
   document: AdfDocumentSchema.optional(),
   reportDigest: DigestSchema.optional(),
   approval: z.strictObject({ reportDigest: DigestSchema, approvedAt: z.iso.datetime() }).optional(),
