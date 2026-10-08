@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Smoke test compiled CLI
+        shell: bash
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js --help
+          node dist/cli.js config get report.language
+          set +e; node dist/cli.js report; code=$?; set -e
+          test "$code" -eq 3 || { echo "expected exit code 3 for unimplemented command, got $code"; exit 1; }
+      - name: Verify package contents
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: pnpm pack --dry-run

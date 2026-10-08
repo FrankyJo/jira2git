@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment and secrets — credentials never belong in this repository
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# JetBrains IDEs (project files are developer-specific)
+.idea/
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
