@@ -6,6 +6,8 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     restoreMocks: true,
+    // Integration tests drive real git processes, which are slow on some CI runners.
+    testTimeout: 60_000,
     coverage: { provider: 'v8', include: ['src/**/*.ts'] },
   },
 });

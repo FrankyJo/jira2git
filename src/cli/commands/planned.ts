@@ -25,11 +25,6 @@ export const PLANNED_COMMANDS: readonly PlannedCommand[] = [
   { name: 'login', description: 'Connect to Jira Cloud and store credentials securely.', phase: 2 },
   { name: 'logout', description: 'Remove stored Jira credentials.', phase: 2 },
   {
-    name: 'status',
-    description: 'Show the issue, last published report, and pending changes for this branch.',
-    phase: 2,
-  },
-  {
     name: 'report',
     description: 'Generate, preview, and publish an incremental Jira report.',
     phase: 3,

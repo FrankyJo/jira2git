@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { UsageError } from '../core/errors';
 import { LanguageSchema } from '../localization/languages';
 import { resolveLanguage } from '../localization/resolve';
-import type { ConfigScope, GlobalConfig, RepoConfig } from './schema';
+import { BranchNameSchema, type ConfigScope, type GlobalConfig, type RepoConfig } from './schema';
 
 export type ConfigValueSource = 'repository' | 'global' | 'default';
 
@@ -53,8 +53,30 @@ const reportLanguage: ConfigKeyDefinition = {
   },
 };
 
+const baseBranch: ConfigKeyDefinition = {
+  description: 'Branch the first report of an issue is compared against (repository only).',
+  scopes: ['repository'],
+  parse(raw) {
+    const result = BranchNameSchema.safeParse(raw);
+    if (!result.success)
+      throw new UsageError(`Invalid value "${raw}" for base.branch: not a valid branch name.`);
+    return result.data;
+  },
+  get: (config) => ('base' in config ? config.base?.branch : undefined),
+  resolve: (repo) =>
+    repo?.base?.branch !== undefined
+      ? { value: repo.base.branch, source: 'repository' }
+      : { value: undefined, source: 'default' },
+  set: (config, value) => ({ ...config, base: { branch: BranchNameSchema.parse(value) } }),
+  unset: (config) => {
+    const { base: _removed, ...rest } = config as RepoConfig;
+    return rest as typeof config;
+  },
+};
+
 export const CONFIG_KEYS = {
   'report.language': reportLanguage,
+  'base.branch': baseBranch,
 } as const satisfies Record<string, ConfigKeyDefinition>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;

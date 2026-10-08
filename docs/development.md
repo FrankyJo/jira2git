@@ -32,9 +32,13 @@ src/
   core/           errors, exit codes, phases, version
   config/         schemas, paths, file store, settable keys
   localization/   languages, resolution, label catalog types
-  git/ snapshots/ checkpoints/ credentials/ jira/ adf/ report/ ai/
-  publication/ skill/ installer/ diagnostics/      interfaces for later phases
+  git/            runner, repository locator, issue keys, base branch
+  snapshots/      snapshot engine, incremental diff
+  checkpoints/    record schemas, lineage journal, locks, refs, site identity
+  publication/    PublicationLifecycle (Phase 1); Jira publication types (Phase 2)
+  credentials/ jira/ adf/ report/ ai/ skill/ installer/ diagnostics/   interfaces for later phases
 tests/            Vitest suites mirroring src/
+  fixtures/       GitRepo: real temporary repositories with isolated Git config
 docs/             product and design documentation
 ```
 
@@ -49,6 +53,13 @@ docs/             product and design documentation
   `process.exit`.
 - Unimplemented behavior throws `NotImplementedError(feature, phase)`.
 - Child processes: `execFile`/`spawn` with argument arrays only.
+
+## Git integration tests
+
+`tests/fixtures/git-repo.ts` creates throwaway repositories with an isolated global config
+(`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`), so your own Git settings never affect results.
+`userState()` captures index bytes, HEAD, and every working-tree file (mode, content, mtime) to assert
+that analysis leaves them untouched. The LFS test runs only where `git lfs` is installed.
 
 ## Adding a service
 

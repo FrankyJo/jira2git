@@ -17,7 +17,9 @@
 1. **No credentials in Git.** Repository config (`.git2jira.json`) is strictly validated and has no
    credential fields. `.env*` files are ignored.
 2. **No secrets to Claude.** `ReportGenerationRequest` has no field that can hold credentials.
-   Environment variables are not forwarded to model context.
+   Environment variables are not forwarded to model context. Common secret files (`.env*`, `*.pem`,
+   `*.key`, `id_rsa*`, `.npmrc`, `.netrc`, …) are listed by name but excluded from the diff text that
+   is analyzed, even if they were committed.
 3. **No Jira writes without explicit approval.** Approval is a human action bound to a plan id and
    SHA-256 digest of the exact previewed report. In Skill mode the publish command is never
    pre-approved, so Claude Code's own permission prompt applies. Standalone mode needs an interactive TTY

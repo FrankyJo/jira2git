@@ -1,34 +1,125 @@
 import { z } from 'zod';
-import { IssueKeySchema, type IssueKey, type RepositoryInfo } from '../git/types';
-import { LanguageSchema } from '../localization/languages';
-import { SnapshotSchema } from '../snapshots/types';
+import { IssueKeySchema } from '../git/types';
+import { ObjectIdSchema, SnapshotSchema } from '../snapshots/types';
 
 /**
- * Written only after Jira confirms a comment was created. The next report is
- * computed against `snapshot`. Stored below the Git common directory
- * (`<commonDir>/git2jira/`), never in the working tree. Implemented in Phase 1.
+ * Jira site identity. `id` is derived from the normalized origin and is used
+ * in ref and file names, so checkpoints for different sites never mix.
  */
-export const CheckpointSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  issueKey: IssueKeySchema,
-  /** Monotonic report number per issue, starting at 1. */
-  sequence: z.int().positive(),
-  snapshot: SnapshotSchema,
-  publication: z.strictObject({
-    siteUrl: z.url(),
-    commentId: z.string().min(1),
-    publishedAt: z.iso.datetime(),
-  }),
-  language: LanguageSchema,
-  /** SHA-256 of the canonical structured report that was published. */
-  reportDigest: z.string().regex(/^[0-9a-f]{64}$/),
+export const JiraSiteSchema = z.strictObject({
+  url: z.url({ protocol: /^https$/ }),
+  id: z.string().regex(/^[0-9a-f]{16}$/),
 });
 
-export type Checkpoint = z.infer<typeof CheckpointSchema>;
+/** Random id created once per repository (shared by its worktrees). */
+export const RepositoryIdentitySchema = z.strictObject({
+  id: z.uuid(),
+});
 
-export interface CheckpointStore {
-  latest(repository: RepositoryInfo, issueKey: IssueKey): Promise<Checkpoint | undefined>;
-  list(repository: RepositoryInfo, issueKey: IssueKey): Promise<Checkpoint[]>;
-  /** Atomically appends a checkpoint. Rejects a sequence that is not `latest + 1`. */
-  append(repository: RepositoryInfo, checkpoint: Checkpoint): Promise<void>;
+export const BranchIdentitySchema = z.strictObject({
+  name: z.string().min(1),
+  ref: z.string().startsWith('refs/heads/'),
+});
+
+/** What a report was compared against. */
+export const BaselineSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('merge-base'),
+    baseRef: z.string().min(1),
+    baseName: z.string().min(1),
+    baseCommit: ObjectIdSchema,
+    mergeBase: ObjectIdSchema,
+    tree: ObjectIdSchema,
+  }),
+  z.strictObject({
+    /** Unborn branch: everything in the working tree is new. */
+    kind: z.literal('empty'),
+    tree: ObjectIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('checkpoint'),
+    reportId: z.uuid(),
+    sequence: z.int().positive(),
+    tree: ObjectIdSchema,
+    /** HEAD when the previous snapshot was captured; start of the commit range. */
+    headCommit: ObjectIdSchema.nullable(),
+  }),
+]);
+
+/**
+ * - `publishing`: about to call Jira, outcome unknown until confirmed or resolved.
+ * - `confirmed`: Jira returned the comment; checkpoint not promoted yet.
+ * - `published`: checkpoint ref written; this is the new baseline.
+ * - `cancelled`: definitely not published; baseline unchanged.
+ */
+export const PublicationStateSchema = z.enum(['publishing', 'confirmed', 'published', 'cancelled']);
+
+export const ReportRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  reportId: z.uuid(),
+  sequence: z.int().positive(),
+  site: JiraSiteSchema,
+  issueKey: IssueKeySchema,
+  repository: RepositoryIdentitySchema,
+  branch: BranchIdentitySchema,
+  baseline: BaselineSchema,
+  snapshot: SnapshotSchema,
+  /** Candidate ref holding the snapshot until it is promoted. */
+  snapshotRef: z.string().startsWith('refs/git2jira/'),
+  state: PublicationStateSchema,
+  /** SHA-256 of the canonical report that was approved for publication. */
+  reportDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  publication: z
+    .strictObject({
+      commentId: z.string().min(1),
+      publishedAt: z.iso.datetime(),
+    })
+    .optional(),
+  /** Durable ref (and its commit) that keeps the published snapshot alive. */
+  checkpointRef: z.string().startsWith('refs/git2jira/').optional(),
+  checkpointCommit: ObjectIdSchema.optional(),
+});
+
+/** All reports for one (repository, Jira site, issue) lineage. Append-only. */
+export const LineageJournalSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  site: JiraSiteSchema,
+  issueKey: IssueKeySchema,
+  repository: RepositoryIdentitySchema,
+  records: z.array(ReportRecordSchema),
+});
+
+export type JiraSite = z.infer<typeof JiraSiteSchema>;
+export type RepositoryIdentity = z.infer<typeof RepositoryIdentitySchema>;
+export type BranchIdentity = z.infer<typeof BranchIdentitySchema>;
+export type Baseline = z.infer<typeof BaselineSchema>;
+export type PublicationState = z.infer<typeof PublicationStateSchema>;
+export type ReportRecord = z.infer<typeof ReportRecordSchema>;
+export type LineageJournal = z.infer<typeof LineageJournalSchema>;
+
+/** A report whose checkpoint has been promoted: the baseline for the next report. */
+export type Checkpoint = ReportRecord & {
+  state: 'published';
+  publication: NonNullable<ReportRecord['publication']>;
+  checkpointRef: string;
+  checkpointCommit: string;
+};
+
+export function isCheckpoint(record: ReportRecord): record is Checkpoint {
+  return (
+    record.state === 'published' &&
+    record.publication !== undefined &&
+    record.checkpointRef !== undefined &&
+    record.checkpointCommit !== undefined
+  );
+}
+
+export function latestCheckpoint(journal: LineageJournal | undefined): Checkpoint | undefined {
+  return journal?.records.filter(isCheckpoint).sort((a, b) => b.sequence - a.sequence)[0];
+}
+
+export function unresolvedRecords(journal: LineageJournal | undefined): ReportRecord[] {
+  return journal?.records.filter((r) => r.state === 'publishing' || r.state === 'confirmed') ?? [];
 }

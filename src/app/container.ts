@@ -1,6 +1,8 @@
 import type { ReportGenerator } from '../ai/types';
 import type { AdfRenderer } from '../adf/types';
-import type { CheckpointStore } from '../checkpoints/types';
+import type { GitRefs } from '../checkpoints/refs';
+import type { LineageStore } from '../checkpoints/store';
+import type { BaseBranchResolver } from '../git/base';
 import type { ConfigStore } from '../config/store';
 import type { PathEnvironment } from '../config/paths';
 import type { CredentialStore } from '../credentials/types';
@@ -10,7 +12,8 @@ import type { Prompter } from '../installer/prompter';
 import type { JiraAuthProvider } from '../jira/auth/types';
 import type { JiraClient } from '../jira/client/types';
 import type { LabelCatalog } from '../localization/catalog';
-import type { PublicationService, ReportHistory } from '../publication/types';
+import type { PublicationLifecycle } from '../publication/lifecycle';
+import type { PublicationService } from '../publication/types';
 import type { SkillInstaller } from '../skill/types';
 import type { IncrementalDiffEngine, SnapshotEngine } from '../snapshots/types';
 import { NotImplementedError } from '../core/errors';
@@ -24,9 +27,12 @@ export interface ServiceRegistry {
   gitRunner: GitCommandRunner;
   repositoryLocator: GitRepositoryLocator;
   issueKeyDetector: IssueKeyDetector;
+  baseResolver: BaseBranchResolver;
   snapshotEngine: SnapshotEngine;
   diffEngine: IncrementalDiffEngine;
-  checkpointStore: CheckpointStore;
+  lineageStore: LineageStore;
+  gitRefs: GitRefs;
+  publicationLifecycle: PublicationLifecycle;
   credentialStore: CredentialStore;
   jiraAuth: JiraAuthProvider;
   jiraClient: JiraClient;
@@ -34,7 +40,6 @@ export interface ServiceRegistry {
   labelCatalog: LabelCatalog;
   adfRenderer: AdfRenderer;
   publicationService: PublicationService;
-  reportHistory: ReportHistory;
   skillInstaller: SkillInstaller;
   diagnostics: DiagnosticsRunner;
 }
@@ -49,15 +54,17 @@ export const SERVICE_PHASES: Readonly<Record<ServiceName, Phase>> = {
   gitRunner: 1,
   repositoryLocator: 1,
   issueKeyDetector: 1,
+  baseResolver: 1,
   snapshotEngine: 1,
   diffEngine: 1,
-  checkpointStore: 1,
+  lineageStore: 1,
+  gitRefs: 1,
+  publicationLifecycle: 1,
   credentialStore: 2,
   jiraAuth: 2,
   jiraClient: 2,
   adfRenderer: 2,
   publicationService: 2,
-  reportHistory: 2,
   reportGenerator: 3,
   labelCatalog: 3,
   skillInstaller: 4,

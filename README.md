@@ -2,9 +2,9 @@
 
 Turn Git changes into professional, incremental Jira implementation reports, written by Claude Code.
 
-> **Status: Phase 0 (foundation).** The project builds, and configuration and language settings work.
-> Reporting, Jira publishing, and the `/jira-report` Skill are not available yet. See
-> [docs/roadmap.md](docs/roadmap.md).
+> **Status: Phase 1 (Git engine).** Configuration, language settings, and the incremental Git analysis
+> (`git2jira status`) work. AI reports, Jira publishing, and the `/jira-report` Skill are not available
+> yet. See [docs/roadmap.md](docs/roadmap.md).
 
 ## What it will do
 
@@ -64,26 +64,44 @@ git2jira config list                          # all settings with their source
 git2jira config path                          # where the files live
 ```
 
+Base branch for the first report of an issue (repository only; otherwise detected, and you are asked
+when it is ambiguous):
+
+```sh
+git2jira config set base.branch develop --repo
+```
+
 The language is chosen in this order: the `--language` option of a run, then the repository config,
 then the global config, then English.
 
 Configuration files never contain credentials. Jira credentials will be kept in your operating system's
 credential store (Keychain, Windows Credential Manager, or Secret Service).
 
+## Preview the next report
+
+```sh
+git2jira status                       # issue from the branch name
+git2jira status --issue LSND-1234     # explicit issue
+git2jira status --base develop        # explicit base for the first report
+git2jira status --json
+```
+
+`status` is read-only: it does not change your files, index, HEAD, or refs.
+
 ## Commands
 
-| Command     | Purpose                                              | Available |
-| ----------- | ---------------------------------------------------- | --------- |
-| `config`    | Read and change settings                             | Now       |
-| `init`      | Interactive setup                                    | Phase 5   |
-| `doctor`    | Diagnose the installation                            | Phase 5   |
-| `login`     | Connect to Jira                                      | Phase 2   |
-| `logout`    | Remove Jira credentials                              | Phase 2   |
-| `status`    | Show issue, last report, and pending changes         | Phase 2   |
-| `report`    | Generate, preview, and publish a report              | Phase 3   |
-| `history`   | List published reports                               | Phase 2   |
-| `recover`   | Repair interrupted publications and lost checkpoints | Phase 2   |
-| `uninstall` | Remove the Skill, credentials, and configuration     | Phase 5   |
+| Command     | Purpose                                                      | Available |
+| ----------- | ------------------------------------------------------------ | --------- |
+| `config`    | Read and change settings                                     | Now       |
+| `init`      | Interactive setup                                            | Phase 5   |
+| `doctor`    | Diagnose the installation                                    | Phase 5   |
+| `login`     | Connect to Jira                                              | Phase 2   |
+| `logout`    | Remove Jira credentials                                      | Phase 2   |
+| `status`    | Preview the issue, baseline, and changes for the next report | Now       |
+| `report`    | Generate, preview, and publish a report                      | Phase 3   |
+| `history`   | List published reports                                       | Phase 2   |
+| `recover`   | Repair interrupted publications and lost checkpoints         | Phase 2   |
+| `uninstall` | Remove the Skill, credentials, and configuration             | Phase 5   |
 
 Commands that are not available yet exit with code 3 and say which phase delivers them.
 

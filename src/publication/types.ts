@@ -1,31 +1,19 @@
 import type { AdfDocument } from '../adf/types';
 import type { Checkpoint } from '../checkpoints/types';
-import type { IssueKey, RepositoryInfo } from '../git/types';
 import type { StructuredReport } from '../report/schema';
-import type { Snapshot } from '../snapshots/types';
+import type { PreparedReport } from './lifecycle';
 
 /**
- * Publication lifecycle (Phase 2). Each transition is deterministic code, not
- * model output:
+ * Jira publication (Phase 2), built on PublicationLifecycle:
  *
- *   prepared → approved → publishing → published (checkpoint written)
- *                       ↘ failed (no checkpoint; safe to retry)
- *   prepared → rejected  (nothing sent)
- *
- * Before the Jira write, a `publishing` journal entry is recorded so that a
- * crash between "comment created" and "checkpoint saved" can be reconciled by
- * `git2jira recover` instead of creating a duplicate comment.
+ *   prepare → (AI report, preview, approval) → beginPublication → POST comment
+ *     → confirmPublication (checkpoint promoted)
+ *     ↘ failure before the request was sent → resolvePending({ published: false })
+ *     ↘ unknown outcome (crash, timeout) → recover + Jira lookup → resolvePending
+ *   prepare → user rejects → cancel (baseline unchanged)
  */
-export type PublicationState =
-  'prepared' | 'approved' | 'publishing' | 'published' | 'failed' | 'rejected';
-
 export interface PublicationPlan {
-  id: string;
-  repository: RepositoryInfo;
-  issueKey: IssueKey;
-  sequence: number;
-  baseSnapshot: Snapshot | null;
-  targetSnapshot: Snapshot;
+  prepared: PreparedReport;
   report: StructuredReport;
   document: AdfDocument;
   /** SHA-256 of the canonical report; approval is bound to this exact content. */
@@ -34,29 +22,16 @@ export interface PublicationPlan {
 
 /** Proof of explicit user approval for one specific plan and digest. */
 export interface PublicationApproval {
-  planId: string;
+  reportId: string;
   reportDigest: string;
   approvedAt: string;
 }
 
 export type PublicationOutcome =
   | { state: 'published'; checkpoint: Checkpoint; commentUrl: string }
-  | { state: 'failed'; error: Error; retryable: boolean }
-  | { state: 'nothing-to-publish' };
+  | { state: 'failed'; error: Error; retryable: boolean };
 
 export interface PublicationService {
-  /** Publishes only when `approval` matches the plan id and digest. */
+  /** Publishes only when `approval` matches the plan's report id and digest. */
   publish(plan: PublicationPlan, approval: PublicationApproval): Promise<PublicationOutcome>;
-}
-
-/** Report history and recovery from local journal and Jira comment footers. */
-export interface ReportHistory {
-  list(repository: RepositoryInfo, issueKey: IssueKey): Promise<Checkpoint[]>;
-  /** Reconciles interrupted publications and lost checkpoints. */
-  recover(repository: RepositoryInfo, issueKey: IssueKey): Promise<RecoveryResult>;
-}
-
-export interface RecoveryResult {
-  restoredCheckpoints: number;
-  unresolvedPublications: string[];
 }

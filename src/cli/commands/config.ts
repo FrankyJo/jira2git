@@ -90,10 +90,10 @@ export function createConfigCommand(ctx: CliContext): Command {
     .action(async (options: { json?: boolean }) => {
       const repo = await readRepoIfPresent();
       const global = await store().readGlobal();
-      const rows = (Object.keys(CONFIG_KEYS) as ConfigKey[]).map((key) => ({
-        key,
-        ...CONFIG_KEYS[key].resolve(repo, global),
-      }));
+      const rows = (Object.keys(CONFIG_KEYS) as ConfigKey[]).map((key) => {
+        const { value, source } = CONFIG_KEYS[key].resolve(repo, global);
+        return { key, value: value ?? null, source };
+      });
       if (options.json) {
         println(ctx.stdout, JSON.stringify(rows));
       } else {
@@ -127,6 +127,11 @@ export function createConfigCommand(ctx: CliContext): Command {
       const root = await requireRepoRoot();
       await store().writeRepo(root, update(await store().readRepo(root)));
       return store().repoPath(root);
+    }
+    if (!definition.scopes.includes('global')) {
+      throw new UsageError(
+        `${key} can only be stored in the repository configuration; add --repo.`,
+      );
     }
     await store().writeGlobal(update(await store().readGlobal()));
     return store().globalPath;

@@ -1,46 +1,64 @@
 import { z } from 'zod';
-import type { IssueKey, RepositoryInfo } from '../git/types';
+import type { RepositoryInfo } from '../git/types';
 
-const Sha = z
+export const ObjectIdSchema = z
   .string()
-  .regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/, 'Expected a full SHA-1 or SHA-256 object id.');
+  .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, 'Expected a full SHA-1 or SHA-256 object id.');
 
 /**
- * An immutable capture of the working tree at report time, including
- * uncommitted and untracked (non-ignored) files. It is written as a Git tree
- * object through a temporary index, so the developer's index and working
- * files are never touched. See docs/git-snapshots.md. Implemented in Phase 1.
+ * An exact capture of the working tree: committed, staged, unstaged, and
+ * untracked non-ignored files, as a Git tree object. It is built in a private
+ * temporary index, so the user's index, HEAD, and files are never touched.
+ * See docs/git-snapshots.md.
  */
 export const SnapshotSchema = z.strictObject({
-  /** Tree object id representing the captured working tree. */
-  tree: Sha,
-  /** Commit object id recorded under `ref` so the tree survives garbage collection. */
-  commit: Sha,
-  /** HEAD at capture time; `null` for an unborn branch. */
-  headCommit: Sha.nullable(),
+  /** Tree object of the captured working tree. */
+  tree: ObjectIdSchema,
+  /** Snapshot commit wrapping `tree` (parent: HEAD at capture time). */
+  commit: ObjectIdSchema,
+  /** HEAD at capture time; `null` on an unborn branch. */
+  headCommit: ObjectIdSchema.nullable(),
   branch: z.string().min(1),
-  /** Private ref holding the snapshot commit, e.g. `refs/git2jira/snapshots/LSND-1234/3`. */
-  ref: z.string().startsWith('refs/git2jira/'),
   capturedAt: z.iso.datetime(),
+  /** Whether the tree differs from HEAD's tree. */
   includesUncommittedChanges: z.boolean(),
 });
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 
+export interface CaptureOptions {
+  /** Commit message for the snapshot commit. */
+  message: string;
+  /**
+   * Ref to create for the snapshot commit (create-only; fails if it exists).
+   * Without a ref the objects are unreferenced and may be garbage-collected,
+   * which is acceptable only for read-only analysis.
+   */
+  ref?: string;
+}
+
 export interface SnapshotEngine {
-  capture(repository: RepositoryInfo, issueKey: IssueKey): Promise<Snapshot>;
-  /** Removes snapshot refs that are no longer referenced by any checkpoint. */
-  prune(repository: RepositoryInfo, issueKey: IssueKey, keep: readonly Snapshot[]): Promise<void>;
+  capture(repository: RepositoryInfo, options: CaptureOptions): Promise<Snapshot>;
 }
 
 export type FileChangeStatus =
   'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'type-changed';
+
+export type GitObjectKind = 'file' | 'executable' | 'symlink' | 'submodule';
 
 export interface FileChange {
   path: string;
   /** Previous path for renames and copies. */
   previousPath?: string;
   status: FileChangeStatus;
+  /** Rename/copy similarity percentage. */
+  similarity?: number;
+  /** Kind of the new object, or of the old one for deletions. */
+  kind: GitObjectKind;
+  previousKind?: GitObjectKind;
+  /** Mode changed (for example a file became executable). */
+  modeChanged: boolean;
+  /** Line counts; 0 for binary files and submodules. */
   additions: number;
   deletions: number;
   binary: boolean;
@@ -52,35 +70,43 @@ export interface CommitSummary {
   authoredAt: string;
 }
 
-/** Changes between the previous checkpoint and the current snapshot. */
 export interface ChangeSet {
-  /** `null` base means this is the first report for the issue. */
-  base: { tree: string; label: 'checkpoint' | 'merge-base' } | null;
-  target: Snapshot;
+  baseTree: string;
+  targetTree: string;
   files: FileChange[];
+  /** Commits between the baseline commit and HEAD. Context only; may include rewritten history. */
   commits: CommitSummary[];
-  /** Unified diff, truncated to the configured budget. Untrusted content. */
+  commitsTruncated: boolean;
+  /** Unified diff limited to `maxPatchBytes`, without excluded paths. Untrusted content. */
   patch: string;
   patchTruncated: boolean;
+  /** Patterns whose matches were omitted from `patch` (they still appear in `files`). */
+  patchExclusions: readonly string[];
 }
 
-export interface DiffEngineOptions {
-  /** Upper bound on the patch text handed to the AI layer. */
+export interface DiffOptions {
   maxPatchBytes: number;
-  /** Path globs excluded from analysis (lock files, generated code, secrets). */
-  excludePaths: readonly string[];
+  /** Glob patterns (Git pathspec `glob` magic) excluded from the patch. */
+  excludeFromPatch: readonly string[];
+  maxCommits: number;
+}
+
+export interface DiffRequest {
+  baseTree: string;
+  targetTree: string;
+  /** Commit range for context: commits reachable from `toCommit` but not from `fromCommit`. */
+  fromCommit: string | null;
+  toCommit: string | null;
 }
 
 export interface IncrementalDiffEngine {
-  /** `base` is the snapshot from the last published checkpoint, if any. */
   diff(
     repository: RepositoryInfo,
-    base: Snapshot | undefined,
-    target: Snapshot,
-    options: DiffEngineOptions,
+    request: DiffRequest,
+    options?: Partial<DiffOptions>,
   ): Promise<ChangeSet>;
 }
 
 export function isEmptyChangeSet(changeSet: ChangeSet): boolean {
-  return changeSet.files.length === 0;
+  return changeSet.baseTree === changeSet.targetTree || changeSet.files.length === 0;
 }

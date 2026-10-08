@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CheckpointSchema } from '../../src/checkpoints/types';
+import { ReportRecordSchema } from '../../src/checkpoints/types';
 import { IssueKeySchema } from '../../src/git/types';
 import { StructuredReportSchema } from '../../src/report/schema';
 
@@ -45,9 +45,9 @@ describe('domain schemas', () => {
     ).toBe(false);
   });
 
-  it('requires a checkpoint to reference a published comment', () => {
+  it('rejects incomplete report records', () => {
     expect(
-      CheckpointSchema.safeParse({ schemaVersion: 1, issueKey: 'LSND-1', sequence: 1 }).success,
+      ReportRecordSchema.safeParse({ schemaVersion: 1, issueKey: 'LSND-1', sequence: 1 }).success,
     ).toBe(false);
   });
 });

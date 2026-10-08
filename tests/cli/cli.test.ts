@@ -90,6 +90,7 @@ describe('git2jira CLI', () => {
       const { stdout } = await h.run(['config', 'list', '--json']);
       expect(JSON.parse(stdout)).toEqual([
         { key: 'report.language', value: 'en', source: 'default' },
+        { key: 'base.branch', value: null, source: 'default' },
       ]);
     });
 

@@ -52,7 +52,7 @@ _types_ only. No module imports `src/cli`.
   │
   ├─ git2jira report prepare --json            [CLI, deterministic]
   │    locate repo → detect issue key → load latest checkpoint
-  │    → capture snapshot → diff against checkpoint snapshot
+  │    → capture snapshot → diff against checkpoint snapshot (PublicationLifecycle.prepare)
   │    → empty?  exit "nothing to report"
   │    → write analysis request (change set, issue context, language) to a private temp file
   │
@@ -64,7 +64,7 @@ _types_ only. No module imports `src/cli`.
   ├─ user approves                              [human]
   │
   └─ git2jira report publish --plan <id> --digest <sha256>   [CLI]
-       journal "publishing" → POST new comment → append checkpoint → journal "published"
+       beginPublication → POST new comment → confirmPublication (checkpoint promoted)
 ```
 
 Command names in this diagram are the intended design; they will be finalized in Phases 2 to 4.
@@ -93,14 +93,14 @@ and refuses to publish without one.
 
 ## Data locations
 
-| Data                          | Location                                                                                     |
-| ----------------------------- | -------------------------------------------------------------------------------------------- |
-| Global config                 | `$GIT2JIRA_CONFIG_DIR` or `~/.config/git2jira/config.json` (`%APPDATA%\git2jira` on Windows) |
-| Repository config (shareable) | `<repo>/.git2jira.json`                                                                      |
-| Checkpoints, publish journal  | `<git common dir>/git2jira/` (never in the working tree)                                     |
-| Snapshot commits              | `refs/git2jira/snapshots/<ISSUE>/<n>` (not pushed by default refspecs)                       |
-| Credentials                   | OS credential store, service `git2jira-ai`                                                   |
-| Skill                         | `~/.claude/skills/jira-report/`                                                              |
+| Data                            | Location                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------- |
+| Global config                   | `$GIT2JIRA_CONFIG_DIR` or `~/.config/git2jira/config.json` (`%APPDATA%\git2jira` on Windows) |
+| Repository config (shareable)   | `<repo>/.git2jira.json`                                                                      |
+| Checkpoints, publish journal    | `<git common dir>/git2jira/` (never in the working tree)                                     |
+| Snapshot and checkpoint commits | `refs/git2jira/<siteId>/<ISSUE>/{candidates,checkpoints}/…` (not pushed by default refspecs) |
+| Credentials                     | OS credential store, service `git2jira-ai`                                                   |
+| Skill                           | `~/.claude/skills/jira-report/`                                                              |
 
 ## Exit codes
 

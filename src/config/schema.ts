@@ -37,11 +37,27 @@ const IssueSettingsSchema = z.strictObject({
   projectKeys: z.array(ProjectKeySchema).min(1).optional(),
 });
 
+/** A branch or ref name as typed by a user; existence is checked against Git at use. */
+export const BranchNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .refine((v) => !v.startsWith('-') && !/[\s~^:?*[\\]|\.\.|@\{/.test(v), {
+    message: 'Not a valid Git branch name.',
+  });
+
+const BaseSettingsSchema = z.strictObject({
+  /** Branch the first report of an issue is compared against, e.g. `develop` or `origin/main`. */
+  branch: BranchNameSchema.optional(),
+});
+
 /** Repository config is safe to commit: it must never contain secrets. */
 export const RepoConfigSchema = z.strictObject({
   version: z.literal(CONFIG_SCHEMA_VERSION).optional(),
   report: ReportSettingsSchema.optional(),
   issue: IssueSettingsSchema.optional(),
+  base: BaseSettingsSchema.optional(),
 });
 
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;

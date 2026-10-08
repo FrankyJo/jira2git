@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { VERSION } from '../core/version';
 import { createConfigCommand } from './commands/config';
 import { PLANNED_COMMANDS, createPlannedCommand } from './commands/planned';
+import { createStatusCommand } from './commands/status';
 import type { CliContext } from './context';
 
 export function createProgram(ctx: CliContext): Command {
@@ -17,6 +18,7 @@ export function createProgram(ctx: CliContext): Command {
     .exitOverride();
 
   program.addCommand(createConfigCommand(ctx));
+  program.addCommand(createStatusCommand(ctx));
   for (const spec of PLANNED_COMMANDS) program.addCommand(createPlannedCommand(spec));
 
   // Apply the same output and exit behaviour to every subcommand.

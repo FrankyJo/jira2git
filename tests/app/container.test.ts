@@ -14,7 +14,7 @@ describe('ServiceContainer', () => {
 
   it('lets factories resolve their dependencies', () => {
     const container = new ServiceContainer()
-      .register('pathEnvironment', () => ({ env: {}, platform: 'linux', homeDir: '/h' }))
+      .register('pathEnvironment', () => ({ env: {}, platform: 'linux' as const, homeDir: '/h' }))
       .register('configStore', (c) => {
         const env = c.resolve('pathEnvironment');
         return { globalPath: `${env.homeDir}/x` } as never;
@@ -30,11 +30,11 @@ describe('ServiceContainer', () => {
   });
 });
 
-describe('default container (Phase 0)', () => {
-  it('registers exactly the Phase 0 services', () => {
+describe('default container', () => {
+  it('registers exactly the Phase 0 and Phase 1 services', () => {
     const container = createDefaultContainer();
     for (const [name, phase] of Object.entries(SERVICE_PHASES)) {
-      expect(container.has(name as keyof typeof SERVICE_PHASES), name).toBe(phase === 0);
+      expect(container.has(name as keyof typeof SERVICE_PHASES), name).toBe(phase <= 1);
     }
   });
 });

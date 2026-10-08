@@ -18,12 +18,18 @@
 - Zod schemas: global/repository config, issue key, snapshot, checkpoint, structured report.
 - Working `config get|set|unset|list|path` and language resolution (`en`, `uk`).
 
-## Phase 1: Git snapshots and checkpoints
+## Phase 1: Git snapshots and checkpoints (done)
 
-- Safe `GitCommandRunner` (`execFile`), repository locator, issue key detector.
-- Snapshot engine (temporary index → tree → private ref).
-- Incremental diff engine with path exclusions and patch budget.
-- Checkpoint store under the Git common directory.
+- Safe `SpawnGitRunner`, repository locator (worktrees, unborn, detached, bare), issue key detection,
+  `--issue` override.
+- Base branch resolution (`--base`, `base.branch`, Git metadata, ambiguity requires a choice).
+- Snapshot engine: temporary index copy, stability check, create-only private refs.
+- Incremental diff engine: NUL-delimited parsing, renames, modes, binaries, patch budget, secret and
+  lock-file exclusions.
+- Lineage journal, repository identity, cross-process locks, checkpoint refs.
+- `PublicationLifecycle`: analyze, prepare, cancel, begin, confirm/promote, resolve pending, recover.
+- `git2jira status` (read-only preview).
+- See [git-snapshots.md](git-snapshots.md).
 
 ## Phase 2: Jira
 
@@ -31,7 +37,7 @@
 - API-token `JiraAuthProvider`; verify Atlassian token types and scopes.
 - Jira REST v3 client (native fetch): issue, comments, create comment; retries and rate limits.
 - ADF renderer and comment footer.
-- Publication lifecycle with journal; `login`, `logout`, `status`, `history`, `recover`.
+- Jira publication on top of `PublicationLifecycle`; `login`, `logout`, `history`, `recover` (including Jira lookup for unresolved publications).
 - OAuth evaluation per [authentication.md](authentication.md).
 
 ## Phase 3: AI reporting

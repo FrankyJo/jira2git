@@ -15,6 +15,8 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
+      // Conflicts with no-non-null-assertion from the strict preset.
+      '@typescript-eslint/non-nullable-type-assertion-style': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' },
