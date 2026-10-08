@@ -14,7 +14,7 @@ Code: `src/installer/wizard.ts` (wizard), `src/diagnostics` (environment probe, 
 | Files             | `dist/`, `skill/` (the `/jira-report` package), `README.md`, `LICENSE`               |
 | Runtime deps      | `@clack/prompts`, `commander`, `zod`                                                 |
 | Node.js           | `>=22.12.0`                                                                          |
-| Version           | `0.9.0` (release candidate; 1.0.0 after the real MCP checks in release-checklist.md) |
+| Version           | `0.9.1` (release candidate; 1.0.0 after the real MCP checks in release-checklist.md) |
 | Lifecycle scripts | `prepack`: `pnpm build`; `prepublishOnly`: `pnpm check`                              |
 | Publishing        | manual only, with provenance (see [development.md](development.md#releases))         |
 

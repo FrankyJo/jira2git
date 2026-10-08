@@ -3,7 +3,22 @@
 All notable changes to Git2Jira AI. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/). Nothing has been published to npm yet.
 
-## [0.9.0] — unreleased (release candidate)
+## [0.9.1] — 2026-10-08 (release candidate)
+
+First version intended for npm. The package contents are the same as 0.9.0.
+
+### Fixed
+
+- Release workflow: `npm publish` now gets the tarball as `./out/<file>.tgz`. Without `./`, npm read
+  `out/<file>.tgz` as the GitHub repository `out/<file>.tgz` and tried to clone it, so the 0.9.0
+  publication failed before reaching the registry.
+- `.gitattributes` forces LF line endings. Windows checkouts had CRLF, so `pnpm lint` (Prettier) had
+  failed on Windows CI since Phase 0 and the Windows tests had never run; they now pass on Node 22 and 24.
+
+## [0.9.0] — tagged, never published to npm
+
+Release candidate from the Phase 6 audit. The tag `v0.9.0` exists, but its npm publication failed
+(see 0.9.1); use 0.9.1.
 
 Phase 6: QA, security audit, and release preparation.
 

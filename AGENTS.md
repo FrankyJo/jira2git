@@ -9,7 +9,7 @@ incremental Jira implementation reports from Git changes. Read `docs/architectur
 
 ## Current phase
 
-All roadmap phases (0–6) are done (see `docs/roadmap.md`); the project is at release candidate 0.9.0.
+All roadmap phases (0–6) are done (see `docs/roadmap.md`); the project is at release candidate 0.9.1.
 Work on bug fixes and on what `docs/release-checklist.md` lists. New features go through the roadmap
 first. Never add placeholder code that reports success for something it did not do.
 
