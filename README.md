@@ -2,11 +2,13 @@
 
 Generate incremental, professional Jira implementation reports from your Git changes with Claude Code.
 
-> **Status: 0.5.0 (Phase 5).** Setup wizard, diagnostics, and npm packaging are done. The package is
-> **not published to npm yet**. The name `git2jira-ai` was free on npm when checked on 2026-10-08 and
-> must be checked again right before publishing. Until then, install from a tarball (below). Real
-> Atlassian MCP authorization and Jira write access have **not** been verified by the automated tests;
-> see [docs/skill-verification.md](docs/skill-verification.md).
+> **Status: 0.9.0, release candidate (not published to npm).** Manual mode is ready for use. Atlassian
+> MCP mode is implemented and tested against simulated tools only: real OAuth authorization, Jira read
+> and write permissions, and Rovo MCP result formats have **not** been verified, so treat it as
+> experimental until [docs/skill-verification.md](docs/skill-verification.md) passes on your site. The
+> optional API-token mode is tested against a local mock of Jira. See
+> [docs/release-checklist.md](docs/release-checklist.md#readiness). The npm name `git2jira-ai` was free on
+> 2026-10-08 and must be checked again right before publishing.
 
 ## What it does
 
@@ -53,8 +55,8 @@ wizard and `git2jira doctor` tell you to install it globally.
 Until then, build and install the tarball:
 
 ```sh
-pnpm install && pnpm pack                    # → git2jira-ai-0.5.0.tgz
-npm install -g ./git2jira-ai-0.5.0.tgz
+pnpm install && pnpm pack                    # → git2jira-ai-0.9.0.tgz
+npm install -g ./git2jira-ai-0.9.0.tgz
 git2jira init
 ```
 

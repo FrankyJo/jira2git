@@ -7,16 +7,16 @@ Code: `src/installer/wizard.ts` (wizard), `src/diagnostics` (environment probe, 
 
 ## Package
 
-| Item              | Value                                                                        |
-| ----------------- | ---------------------------------------------------------------------------- |
-| npm name          | `git2jira-ai` (free on npm on 2026-10-08; check again before publishing)     |
-| Executables       | `git2jira` and `git2jira-ai` → `dist/cli.js` (ESM, `#!/usr/bin/env node`)    |
-| Files             | `dist/`, `skill/` (the `/jira-report` package), `README.md`, `LICENSE`       |
-| Runtime deps      | `@clack/prompts`, `commander`, `zod`                                         |
-| Node.js           | `>=22.12.0`                                                                  |
-| Version           | `0.5.0` (semantic versioning; 1.0.0 is Phase 6)                              |
-| Lifecycle scripts | `prepack`: `pnpm build`; `prepublishOnly`: `pnpm check`                      |
-| Publishing        | manual only, with provenance (see [development.md](development.md#releases)) |
+| Item              | Value                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| npm name          | `git2jira-ai` (free on npm on 2026-10-08; check again before publishing)             |
+| Executables       | `git2jira` and `git2jira-ai` → `dist/cli.js` (ESM, `#!/usr/bin/env node`)            |
+| Files             | `dist/`, `skill/` (the `/jira-report` package), `README.md`, `LICENSE`               |
+| Runtime deps      | `@clack/prompts`, `commander`, `zod`                                                 |
+| Node.js           | `>=22.12.0`                                                                          |
+| Version           | `0.9.0` (release candidate; 1.0.0 after the real MCP checks in release-checklist.md) |
+| Lifecycle scripts | `prepack`: `pnpm build`; `prepublishOnly`: `pnpm check`                              |
+| Publishing        | manual only, with provenance (see [development.md](development.md#releases))         |
 
 The Skill assets are found at run time by walking up from `dist/cli.js` to `skill/`, so they work from a
 global install, a local install, and `npx`. All paths come from `os.homedir()`, `%APPDATA%`,

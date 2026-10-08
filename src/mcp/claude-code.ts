@@ -85,7 +85,7 @@ export function parseMcpList(output: string): McpServerEntry[] {
       .find((token) => /^https?:\/\//.test(token))
       ?.replace(/[),]+$/, '');
     entries.push({
-      name: name.trim(),
+      name: terminalSafeLine(name.trim(), 64),
       target: terminalSafeLine(target.trim(), 300),
       url,
       health: healthOf(status),

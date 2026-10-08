@@ -43,6 +43,19 @@ export const BaselineSchema = z.discriminatedUnion('kind', [
     tree: ObjectIdSchema,
     /** HEAD when the previous snapshot was captured; start of the commit range. */
     headCommit: ObjectIdSchema.nullable(),
+    /**
+     * Set when the branch took in base-branch commits (rebase or merge) since the previous
+     * report: `tree` is then the previous snapshot with those upstream changes applied
+     * (`checkpointTree` is the unadjusted one), so their files are not reported as new work.
+     */
+    upstream: z
+      .strictObject({
+        baseRef: z.string().min(1),
+        from: ObjectIdSchema,
+        to: ObjectIdSchema,
+        checkpointTree: ObjectIdSchema,
+      })
+      .optional(),
   }),
 ]);
 

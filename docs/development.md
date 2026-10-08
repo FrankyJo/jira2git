@@ -74,6 +74,14 @@ that analysis leaves them untouched. The LFS test runs only where `git lfs` is i
 
 ## Jira tests
 
+`tests/setup.ts` runs before every test file and points `GIT2JIRA_CONFIG_DIR` and `CLAUDE_CONFIG_DIR`
+at a temporary directory, so no test can touch your real configuration or Claude Code files.
+
+`tests/e2e/scenarios.test.ts` holds the release scenarios A–O; `tests/security/hardening.test.ts` holds
+the regression tests for audit findings. `tests/fixtures/skill-session.ts` simulates a Claude Code
+session: CLI commands run in-process, and any command not covered by the shipped `SKILL.md`
+`allowed-tools` goes through a scripted permission prompt. MCP tools there are simulated.
+
 Tests never contact a real Jira site. `tests/fixtures/mock-jira.ts` serves the REST endpoints Git2Jira
 uses on a local port, with accounts (classic and scoped tokens), permissions, moved issues, a small
 page size to force pagination, and fault injection (`status`, `hang`, `drop`, `process-then-drop`,

@@ -57,7 +57,18 @@ export class SpawnGitRunner implements GitCommandRunner {
   }
 
   run(args: readonly string[], options: GitCommandOptions): Promise<GitCommandResult> {
-    const fullArgs = ['--no-pager', '-c', 'color.ui=never', '-c', 'core.quotePath=false', ...args];
+    // core.fsmonitor names a program git would run on index operations; a repository's local
+    // config must not be able to make Git2Jira execute anything.
+    const fullArgs = [
+      '--no-pager',
+      '-c',
+      'color.ui=never',
+      '-c',
+      'core.quotePath=false',
+      '-c',
+      'core.fsmonitor=false',
+      ...args,
+    ];
     const limit = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
 
     return new Promise((resolve, reject) => {

@@ -181,3 +181,33 @@ export const McpVerificationRecordSchema = z.strictObject({
   messages: z.array(z.string().max(1000)),
 });
 export type McpVerificationRecord = z.infer<typeof McpVerificationRecordSchema>;
+
+/** How long an access check counts as current for authorizing a publication. */
+export const VERIFICATION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Why automatic publication through `server` is not allowed now, or undefined when it is:
+ * the last access check must be `ready` (the comment tool was visible and reads worked),
+ * for this server, and recent. Anything else keeps MCP publication off; manual mode stays
+ * available.
+ */
+export function mcpPublicationBlocker(
+  record: McpVerificationRecord | undefined,
+  server: string,
+  now: Date,
+  maxAgeMs = VERIFICATION_MAX_AGE_MS,
+): string | undefined {
+  if (!record) return 'Atlassian MCP access has not been checked ("git2jira mcp verify")';
+  if (record.server !== undefined && record.server !== server) {
+    return `the last access check was for MCP server "${record.server}", not "${server}"`;
+  }
+  if (record.state !== 'ready') {
+    return `the last access check found "${record.state}"${record.messages[0] ? `: ${record.messages[0]}` : ''}`;
+  }
+  if (record.tools.writeComment === undefined) return 'the comment tool was not available';
+  const age = now.getTime() - Date.parse(record.verifiedAt);
+  if (!(age >= 0 && age <= maxAgeMs)) {
+    return `the last access check (${record.verifiedAt}) is older than ${String(Math.round(maxAgeMs / 3_600_000))} hours`;
+  }
+  return undefined;
+}

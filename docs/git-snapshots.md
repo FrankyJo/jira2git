@@ -99,7 +99,8 @@ Guarantees:
   unreferenced and are eventually pruned by Git's own garbage collection.
 - **Process safety**: git runs through `spawn` with argument arrays (`shell: false`).
   `GIT_DIR`/`GIT_INDEX_FILE`/`GIT_WORK_TREE` and similar inherited variables are stripped.
-  `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, and no pager are set. Diffs use `--no-ext-diff
+  `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, `-c core.fsmonitor=false` (a repository's
+  local config cannot make Git2Jira run an fsmonitor program; Phase 6 audit), and no pager are set. Diffs use `--no-ext-diff
 --no-textconv`. Path lists use NUL-delimited output (`-z`). User-supplied refs are passed after
   `--end-of-options`.
 
@@ -118,6 +119,28 @@ tree and the snapshot tree:
 - Commits between the baseline commit and HEAD (up to 200) are included as context only. After a
   rebase they may include rewritten commits; the tree diff is authoritative.
 - Identical trees mean **no changes**: nothing is prepared and the candidate ref is deleted.
+
+### Base-branch work taken in after a report (rebase or merge)
+
+If the branch was rebased onto, or merged with, a newer version of its base branch since the previous
+report, the files that came from the base branch are someone else's work. Since Phase 6 the baseline
+is then **the previous snapshot with those upstream changes applied**:
+
+1. The base ref recorded by the first report of the lineage (for example `refs/heads/main`) is resolved.
+2. `from` = merge base of the previous snapshot's HEAD and the base; `to` = merge base of the current
+   HEAD and the base. Only when they differ and `from` is an ancestor of `to` (the base moved forward):
+3. `git merge-tree --write-tree --merge-base=<from> <previous snapshot> <to>` replays the upstream
+   changes onto the previous snapshot. A clean result becomes the baseline tree; the diff then shows only
+   this branch's new work, including the user's own edits to files that also changed upstream.
+4. The adjusted tree is wrapped in a commit that is a second parent of the candidate snapshot commit,
+   so it survives garbage collection exactly as long as the snapshot. `baseline.upstream` records the
+   base ref, `from`, `to`, and the unadjusted checkpoint tree.
+
+Anything unclear falls back to the plain previous snapshot (upstream files are then reported as changes,
+as before): no recorded base (first report on an unborn branch), the base ref no longer resolves, the base
+moved backwards, a merge conflict between upstream and reported work, or Git older than 2.40 (no
+`merge-tree --write-tree --merge-base`). Work already reported that comes back through the base branch
+(for example after the feature was merged into main and main back into the feature) is not repeated.
 
 ## 5. Checkpoints and publication state
 
@@ -173,6 +196,7 @@ recover()                      rebuilds journal from refs, promotes `confirmed`,
 | Situation                                 | Behavior                                                                                |
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | Rebase, squash, amend, force-push         | Tree comparison; only content differences are reported.                                 |
+| Rebase onto / merge of a newer base       | Upstream changes applied to the baseline; only the branch's own new work is reported.   |
 | Cherry-pick                               | The picked change appears once.                                                         |
 | Reset / revert of reported work           | Reported as a change (for example a deletion).                                          |
 | Revert back to the last reported state    | No changes.                                                                             |
@@ -196,8 +220,11 @@ recover()                      rebuilds journal from refs, promotes `confirmed`,
   `refs/git2jira/*` is not pushed. A fresh clone or another machine starts with no history for the issue;
   continuing from Jira-side metadata is planned for Phase 2 (`recover` + comment footer) but only
   works if the baseline objects exist locally.
-- **Uncommitted work is reported.** If you report uncommitted changes and later discard them, the next
-  report shows them as removed. There is no committed-only mode yet.
+- **Uncommitted work is reported by default.** If you report uncommitted changes and later discard them,
+  the next report shows them as removed. `report.includeUncommitted false` reports committed work only.
+- **Upstream detection** needs the base ref of the first report to still exist and Git 2.40+; otherwise
+  files taken in from the base branch are reported (see "Base-branch work" above). A conflicting merge of
+  upstream and reported work also falls back.
 - **Submodules** are reported as pointer changes only; changes inside a dirty submodule are not captured.
 - **Git LFS**: only pointer files are compared. Without git-lfs installed, files with LFS attributes are
   captured raw.

@@ -83,7 +83,57 @@
 The global config directory is created with mode `0700` and files with `0600` (POSIX). Writes are atomic
 (temp file + rename).
 
+## Phase 6 audit (2026-10-08)
+
+Independent review of the whole codebase against the threat model above, with regression tests in
+`tests/security/hardening.test.ts` and end-to-end scenarios in `tests/e2e/scenarios.test.ts`.
+
+### Findings and fixes
+
+| ID  | Severity | Finding                                                                                                                                                      | Fix                                                                                                     |
+| --- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| F1  | High     | `report export --output <path>` is pre-approved in the Skill and overwrote any file: a prompt-injected session could replace e.g. a shell rc file unprompted | Refused inside Claude Code; from a terminal never overwrites (`wx`) and only `.md`/`.txt`               |
+| F5  | High     | `report prepare --json` printed the raw diff (`untrusted.patch`) and commit subjects, bypassing value redaction, so secrets in diffs reached the session     | All untrusted fields of that output are redacted with the same rules as the generation request          |
+| F2  | Medium   | A repository's local `core.fsmonitor` made Git run a program during snapshot capture (reproduced: the hook ran)                                              | Every Git call passes `-c core.fsmonitor=false`                                                         |
+| F3  | Medium   | `report publish` (MCP) did not require an access check; only the Skill's instructions kept a read-only or blocked connection from attempting to publish      | Requires the last `mcp verify` for the same server to be `ready`, with the comment tool, < 12 hours old |
+| F4  | Low      | `report open` (pre-approved) opened whatever site a draft named; `report prepare --site` is also pre-approved                                                | Opens only `*.atlassian.net`, `*.jira.com`, or the configured `jira.site`; prints anything else         |
+| F6  | Low      | `claude mcp list` server names were printed unsanitized                                                                                                      | Sanitized with `terminalSafeLine`                                                                       |
+| F7  | Process  | One test without an isolated store wrote `~/.config/git2jira/mcp-verification.json` during the audit (test data only; removed)                               | `tests/setup.ts` points `GIT2JIRA_CONFIG_DIR` and `CLAUDE_CONFIG_DIR` at a temp dir for every test run  |
+
+### Reviewed and found sound
+
+Credential storage (OS store only, stdin, verified before storing, no plaintext fallback); token
+leakage (tokens never in plans, journals, refs, config, logs; tested); command and argument injection
+(`spawn` with arrays, `--end-of-options` for refs, issue keys and `/jira-report` arguments validated
+against strict patterns, test commands split without a shell and global-only); path traversal (report
+ids are UUIDs, issue keys validated before use in file names, the Skill manifest rejects `..` paths and a
+tampered manifest blocks uninstall); symlink traversal (symlinks are captured as links, never followed;
+tested with a link to a file outside the repository); prompt injection (nonce-fenced data, warnings,
+validation against Git; tested with instructions in a diff and in a Jira description); MCP permissions
+(only four read-only tools pre-approved; comment tool and every recording command always prompt);
+unauthorized writes (no edit/delete API; digest-bound approval); supply chain (three runtime
+dependencies, no install scripts, lockfile, `onlyBuiltDependencies: esbuild`, `pnpm audit --prod`
+clean).
+
+### Remaining risks (accepted, documented)
+
+- **The approval boundary is Claude Code's permission prompt.** In `bypassPermissions` mode, or with
+  user rules such as `Bash(git2jira *)`, a session can confirm or publish without asking.
+  `git2jira skill verify` warns; Git2Jira cannot prevent it.
+- **MCP evidence is relayed by the session.** The CLI validates structure, issue key, comment id, and
+  the report marker, but cannot detect a session that fabricates a tool result. That is why recording
+  commands always prompt.
+- **Exactly-once publication is not guaranteed.** Jira has no idempotency key; duplicates are prevented
+  by the journal, the marker search, and the `UNCERTAIN` state, not by a transaction.
+- **Pre-approved readers can read files the user can read.** `report submit --input`, `prepare
+--issue-lookup`, and `mcp verify --input` accept paths; non-JSON content is rejected without echoing
+  it, but a JSON file elsewhere could be parsed. Claude Code's own Read tool has the same reach.
+- **Git clean/smudge filters** configured locally still run during capture, as they do for `git add`.
+- **Redaction is heuristic.** Unusual secret formats in source code can pass; secret _files_ are always
+  excluded by name.
+- **Dev-only advisory**: esbuild (via tsup) GHSA-g7r4-m6w7-qqqr, low, affects only esbuild's dev server
+  on Windows, which this project never runs. Runtime dependencies have no known advisories.
+
 ## Reporting vulnerabilities
 
-Until a dedicated policy is published, report vulnerabilities privately to the maintainers through
-GitHub Security Advisories rather than public issues.
+See [SECURITY.md](../SECURITY.md): report privately through GitHub Security Advisories.

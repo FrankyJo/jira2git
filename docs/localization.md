@@ -54,6 +54,22 @@ The setup wizard (`git2jira init`) asks "Which language should Git2Jira AI use f
 Never translated: file paths, issue keys, branch names, identifiers (classes, functions, variables),
 API endpoints, HTTP methods, commit SHAs, and code.
 
+## Where the language applies (tested)
+
+| Case                                                          | Test                                                            |
+| ------------------------------------------------------------- | --------------------------------------------------------------- |
+| Installer question, default English                           | `tests/installer/wizard.test.ts`                                |
+| Global preference, repository override                        | `tests/cli/cli.test.ts`, `tests/skill/workflow.test.ts`         |
+| Per-report override (`--language`, `/jira-report --language`) | `tests/skill/workflow.test.ts`, `tests/cli/report-run.test.ts`  |
+| Manual reports, English and Ukrainian                         | `tests/delivery/manual.test.ts`, `tests/e2e/scenarios.test.ts`  |
+| MCP reports (Markdown and ADF), both languages                | `tests/delivery/mcp.test.ts`, `tests/e2e/scenarios.test.ts`     |
+| API-token reports in Ukrainian                                | `tests/publication/service.test.ts`                             |
+| Earlier reports unchanged after switching                     | `tests/e2e/scenarios.test.ts` (scenario E)                      |
+| A report in the wrong language is rejected                    | `tests/report/validate.test.ts`, `tests/skill/workflow.test.ts` |
+
+Switching the language never rewrites history: each draft stores its own language and rendered text,
+and published comments are never edited.
+
 ## Adding a language
 
 1. Add the code to `SUPPORTED_LANGUAGES` and `LANGUAGE_NAMES`.

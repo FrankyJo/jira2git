@@ -313,6 +313,14 @@ describe('git2jira report (end to end, fake model)', () => {
   });
 
   describe('MCP mode', () => {
+    const MCP_TOOLS = [
+      'mcp__atlassian__getAccessibleAtlassianResources',
+      'mcp__atlassian__atlassianUserInfo',
+      'mcp__atlassian__getJiraIssue',
+      'mcp__atlassian__listJiraIssueComments',
+      'mcp__atlassian__addOrEditJiraIssueComment',
+    ];
+
     async function prepareMcp() {
       await repo.write('src/a.ts', 'x\n');
       await run(['config', 'set', 'jira.mode', 'mcp']);
@@ -345,8 +353,46 @@ describe('git2jira report (end to end, fake model)', () => {
       return { reportId: request.reportId, digest: draft.reportDigest };
     }
 
+    /** The read-only access check the Skill runs before publishing. */
+    async function verifyAccess(tools = MCP_TOOLS) {
+      const result = await run([
+        'mcp',
+        'verify',
+        '--json',
+        '--input',
+        await json('probe.json', {
+          schemaVersion: 1,
+          server: 'atlassian',
+          tools,
+          probes: {
+            resources: { ok: true, result: [{ id: CLOUD_ID, url: SITE_URL, name: 'site' }] },
+            userInfo: { ok: true, result: { account_id: 'acc-dev' } },
+            issue: { ok: true, result: issueLookup() },
+          },
+        }),
+      ]);
+      return JSON.parse(result.stdout) as { state: string };
+    }
+
+    it('keeps automatic publication off until a successful access check, and when writing is unavailable', async () => {
+      const { reportId, digest } = await prepareMcp();
+      const unchecked = await run(['report', 'publish', '--report', reportId, '--digest', digest]);
+      expect(unchecked.exitCode).toBe(ExitCode.Failure);
+      expect(unchecked.stderr).toContain('Automatic publication is off');
+      expect(unchecked.stderr).toContain(`git2jira report fallback --report ${reportId}`);
+
+      expect((await verifyAccess(MCP_TOOLS.filter((t) => !t.endsWith('Comment')))).state).toBe(
+        'read-only',
+      );
+      const readOnly = await run(['report', 'publish', '--report', reportId, '--digest', digest]);
+      expect(readOnly.stderr).toContain('found "read-only"');
+      // Nothing was recorded: the report can still switch to manual mode.
+      expect((await run(['report', 'fallback', '--report', reportId])).exitCode).toBe(0);
+    });
+
     it('publishes through the authorized session and promotes the checkpoint on the marker', async () => {
       const { reportId, digest } = await prepareMcp();
+      expect((await verifyAccess()).state).toBe('ready');
       const payload = JSON.parse(
         (await run(['report', 'publish', '--report', reportId, '--digest', digest])).stdout,
       ) as { body: { markdown: string }; tool: string };
@@ -379,6 +425,7 @@ describe('git2jira report (end to end, fake model)', () => {
 
     it('falls back to manual with the already generated report when MCP is unavailable', async () => {
       const { reportId, digest } = await prepareMcp();
+      await verifyAccess();
       await run(['report', 'publish', '--report', reportId, '--digest', digest]);
       const failed = await run([
         'report',

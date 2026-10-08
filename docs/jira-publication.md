@@ -346,8 +346,10 @@ DRAFT ─► READY_FOR_REVIEW ─► APPROVED ─► PUBLISHING ─► PUBLISHED
 1. `report prepare --mode mcp --site <url> --cloud-id <id> --issue-lookup <file>`: the lookup result
    must return exactly the branch's issue key (a moved issue fails with `IssueKeyMismatchError`).
 2. `report submit` → `READY_FOR_REVIEW`; the Skill shows the text and digest.
-3. The user approves. `report publish --report <id> --digest <d>` (never pre-approved) re-checks the
-   digest, snapshot, and change list, records approval, writes the journal entry `publishing`, and prints
+3. The user approves. `report publish --report <id> --digest <d>` (never pre-approved) first requires
+   the last access check (`mcp verify`) for the draft's server to be `ready` with the comment tool and
+   less than 12 hours old (Phase 6; otherwise automatic publication is off and `report fallback` is
+   offered), then re-checks the digest, snapshot, and change list, records approval, writes the journal entry `publishing`, and prints
    the payload: `cloudId`, `issueKey`, the tool name, and the body as `markdown` and `adf` (the Skill uses
    whichever the tool's input schema accepts, verbatim).
 4. The Skill calls `addOrEditJiraIssueComment` once. Claude Code's own permission prompt for that tool
@@ -405,8 +407,15 @@ Uses only the documented `claude mcp` commands, never Claude Code's files or cre
 | OAuth flow via `/mcp`                                                   | Documented by Atlassian; not exercised by Git2Jira                                                           |
 | CLI, state machines, checkpoints, recovery, parsing rules               | Unit and integration tests with mocked MCP results and a real Git repository                                 |
 
-No automated test contacts Jira or an MCP server. The first real publication should be done on a test
-issue.
+No automated test contacts Jira or an MCP server. All MCP tests (`tests/delivery/mcp.test.ts`,
+`tests/skill/workflow.test.ts`, `tests/e2e/scenarios.test.ts` F–I) use **simulated** tool results shaped
+like Jira REST responses; they verify Git2Jira's state machine, not Atlassian's behavior. Corporate
+integration testing means running [skill-verification.md](skill-verification.md) section 4 against a real
+site with real admin policies. The first real publication should be done on a test issue.
+
+**Exactly-once is not claimed.** Jira comments have no idempotency key. Git2Jira prevents blind
+duplicates (write-ahead journal, one tool call per approval, marker search, `UNCERTAIN` until a complete
+listing settles it), but cannot make creation transactional.
 
 ## Report commands (Phase 2.5)
 

@@ -122,6 +122,24 @@ npm(['install', '--no-audit', '--no-fund', '--loglevel=error', tarball], {
 });
 const cliPath = path.join(app, 'node_modules', pkg.name, 'dist', 'cli.js');
 
+// Unrelated Claude Code files that installing and uninstalling must leave exactly as they are.
+const claudeHome = path.join(home, 'claude');
+const existing = {
+  'settings.json': JSON.stringify({ permissions: { allow: ['Read'] }, env: { KEEP: '1' } }),
+  'skills/other-skill/SKILL.md': '---\nname: other-skill\ndescription: mine\n---\nkeep\n',
+  'agents/other-agent.md': '---\nname: other-agent\ndescription: mine\n---\nkeep\n',
+};
+for (const [file, content] of Object.entries(existing)) {
+  mkdirSync(path.dirname(path.join(claudeHome, file)), { recursive: true });
+  writeFileSync(path.join(claudeHome, file), content);
+}
+function assertExistingPreserved() {
+  for (const [file, content] of Object.entries(existing)) {
+    const actual = readFileSync(path.join(claudeHome, file), 'utf8');
+    if (actual !== content) throw new Error(`${file} was changed`);
+  }
+}
+
 function cli(args, options = {}) {
   return execFileSync(process.execPath, [cliPath, ...args], {
     cwd: options.cwd ?? outside,
@@ -259,8 +277,13 @@ step('doctor runs and reports, without claiming unverified items', () => {
   assert(skill.status === 'pass', JSON.stringify(skill));
 });
 
+step('existing Claude Code skills, agents, and settings are untouched by install', () => {
+  assertExistingPreserved();
+});
+
 step('uninstall removes the Skill and the configuration', () => {
   cli(['uninstall', '--yes']);
+  assertExistingPreserved();
   assert(!existsSync(path.join(home, 'claude', 'skills', 'jira-report')), 'Skill still there');
   assert(!existsSync(path.join(home, 'git2jira', 'config.json')), 'config still there');
 });

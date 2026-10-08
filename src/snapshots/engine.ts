@@ -9,7 +9,7 @@ import { SnapshotCaptureError, SnapshotUnstableError } from './errors';
 import type { CaptureOptions, Snapshot, SnapshotEngine } from './types';
 
 /** Identity for snapshot commits, so capture works without user.name/user.email. */
-const SNAPSHOT_IDENTITY = {
+export const SNAPSHOT_IDENTITY = {
   GIT_AUTHOR_NAME: 'Git2Jira',
   GIT_AUTHOR_EMAIL: 'git2jira@localhost',
   GIT_COMMITTER_NAME: 'Git2Jira',
@@ -64,6 +64,7 @@ export class GitSnapshotEngine implements SnapshotEngine {
             'commit-tree',
             '--no-gpg-sign',
             ...(head ? ['-p', head] : []),
+            ...(options.extraParents ?? []).flatMap((parent) => ['-p', parent]),
             '-m',
             options.message,
             tree,

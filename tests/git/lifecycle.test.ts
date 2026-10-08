@@ -195,8 +195,67 @@ describe('incremental reports', () => {
     repo.git('gc', '-q', '--prune=now');
 
     const report = await prepared(engine, repo);
-    // upstream.ts arrived through the rebase, so it is part of the new branch state.
-    expect(changedPaths(report)).toEqual(['added:c.ts', 'added:upstream.ts']);
+    // upstream.ts arrived from main through the rebase: someone else's work, not reported.
+    expect(changedPaths(report)).toEqual(['added:c.ts']);
+    expect(report.baseline).toMatchObject({
+      kind: 'checkpoint',
+      upstream: { baseRef: 'refs/heads/main' },
+    });
+    expect(report.changeSet.commits.map((c) => c.subject)).not.toContain('upstream');
+    // The adjusted baseline survives garbage collection through the candidate snapshot.
+    repo.git('gc', '-q', '--prune=now');
+    repo.git('cat-file', '-e', `${report.baseline.tree}^{tree}`);
+  });
+
+  it('leaves out base-branch work merged into the feature branch, but keeps own edits to those files', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', '1\n');
+    repo.commitAll('a');
+    await publish(engine, { cwd: repo.root });
+
+    repo.git('switch', '-q', 'main');
+    await repo.write('shared.ts', 'upstream 1\nupstream 2\n');
+    repo.commitAll('upstream');
+    repo.git('switch', '-q', 'feature/LSND-1234-user-profile');
+    repo.git('merge', '-q', '--no-edit', 'main');
+    await repo.write('shared.ts', 'upstream 1\nupstream 2\nmine\n');
+
+    const report = await prepared(engine, repo);
+    expect(changedPaths(report)).toEqual(['modified:shared.ts']);
+    expect(report.changeSet.patch).toContain('+mine');
+    expect(report.changeSet.patch).not.toContain('+upstream 1');
+  });
+
+  it('does not repeat already reported work that comes back through the base branch', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', '1\n');
+    repo.commitAll('a');
+    await publish(engine, { cwd: repo.root });
+    // The feature was merged into main (e.g. a pull request), then main into the feature.
+    repo.git('switch', '-q', 'main');
+    repo.git('merge', '-q', '--no-ff', '--no-edit', 'feature/LSND-1234-user-profile');
+    repo.git('switch', '-q', 'feature/LSND-1234-user-profile');
+    repo.git('merge', '-q', '--no-edit', 'main');
+    const result = await engine.lifecycle.prepare({ cwd: repo.root, site: SITE });
+    expect(result.status).toBe('no-changes');
+  });
+
+  it('falls back to the plain previous snapshot when upstream changes conflict with reported work', async () => {
+    const { repo, engine } = await setup();
+    await repo.write('a.ts', 'mine\n');
+    repo.commitAll('a');
+    await publish(engine, { cwd: repo.root });
+    repo.git('switch', '-q', 'main');
+    await repo.write('a.ts', 'theirs\n');
+    repo.commitAll('upstream a');
+    repo.git('switch', '-q', 'feature/LSND-1234-user-profile');
+    repo.git('merge', '-q', '-X', 'ours', '--no-edit', 'main');
+    await repo.write('b.ts', '1\n');
+
+    const report = await prepared(engine, repo);
+    expect(report.baseline).toMatchObject({ kind: 'checkpoint' });
+    expect((report.baseline as { upstream?: unknown }).upstream).toBeUndefined();
+    expect(changedPaths(report)).toEqual(['added:b.ts']);
   });
 
   it('handles reset to an earlier state by reporting the removed work', async () => {

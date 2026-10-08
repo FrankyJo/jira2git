@@ -41,7 +41,8 @@ import type {
   IssueKeyDetector,
   RepositoryInfo,
 } from '../git/types';
-import { emptyTree } from '../snapshots/engine';
+import { SNAPSHOT_IDENTITY, emptyTree } from '../snapshots/engine';
+import { gitOptional } from '../git/runner';
 import type { GitCommandRunner } from '../git/types';
 import {
   isEmptyChangeSet,
@@ -667,6 +668,75 @@ export class PublicationLifecycle {
     return subjects.some((s) => s.includes(`renamed refs/heads/${from} to refs/heads/${to}`));
   }
 
+  /**
+   * When the branch took in base-branch commits since the previous report (rebased onto, or
+   * merged with, a newer base), those changes are other people's work. Replays them onto the
+   * previous snapshot with a three-way merge (`git merge-tree`), so the incremental diff shows
+   * only this branch's new work. Falls back to the plain previous snapshot (reporting upstream
+   * files as changes, as before) whenever anything is unclear: no recorded base, the base
+   * moved backwards, a merge conflict, or a Git without `merge-tree --write-tree`.
+   */
+  private async upstreamBaseline(
+    repository: RepositoryInfo,
+    context: ReportContext,
+    previous: Checkpoint,
+  ): Promise<
+    { tree: string; commit: string; baseRef: string; from: string; to: string } | undefined
+  > {
+    const head = repository.headCommit;
+    const old = previous.snapshot.headCommit;
+    const first = context.journal?.records
+      .filter((r) => r.baseline.kind === 'merge-base')
+      .sort((a, b) => a.sequence - b.sequence)[0]?.baseline;
+    if (!head || !old || first?.kind !== 'merge-base') return undefined;
+    const git = (args: string[], allowed: number[] = [1], env?: Record<string, string>) =>
+      gitOptional(
+        this.deps.git,
+        args,
+        { cwd: repository.root, ...(env ? { env } : {}) },
+        allowed,
+      ).catch(() => undefined);
+
+    const base = await git([
+      'rev-parse',
+      '--quiet',
+      '--verify',
+      '--end-of-options',
+      `${first.baseRef}^{commit}`,
+    ]);
+    if (!base) return undefined;
+    const from = await git(['merge-base', old, base]);
+    const to = await git(['merge-base', head, base]);
+    if (!from || !to || from === to) return undefined;
+    // Only a base that moved forward (to contains from) is upstream work being taken in.
+    if ((await git(['merge-base', '--is-ancestor', from, to])) === undefined) return undefined;
+
+    const merged = await git(
+      [
+        'merge-tree',
+        '--write-tree',
+        '--no-messages',
+        `--merge-base=${from}`,
+        previous.snapshot.commit,
+        to,
+      ],
+      [],
+    );
+    const tree = merged?.split('\n')[0]?.trim();
+    if (!tree || !/^[0-9a-f]{40,64}$/.test(tree)) return undefined;
+    const commit = await git(
+      ['commit-tree', '--no-gpg-sign', '-m', 'git2jira baseline (upstream applied)', tree],
+      [],
+      {
+        ...SNAPSHOT_IDENTITY,
+        GIT_AUTHOR_DATE: this.now().toISOString(),
+        GIT_COMMITTER_DATE: this.now().toISOString(),
+      },
+    );
+    if (!commit) return undefined;
+    return { tree, commit, baseRef: first.baseRef, from, to };
+  }
+
   private async computeAnalysis(
     context: ReportContext,
     request: AnalysisRequest,
@@ -677,15 +747,29 @@ export class PublicationLifecycle {
     let base: ResolvedBase | undefined;
     let fromCommit: string | null;
 
+    let extraParents: string[] = [];
     if (previous) {
+      const upstream = await this.upstreamBaseline(repository, context, previous);
       baseline = {
         kind: 'checkpoint',
         reportId: previous.reportId,
         sequence: previous.sequence,
-        tree: previous.snapshot.tree,
+        tree: upstream?.tree ?? previous.snapshot.tree,
         headCommit: previous.snapshot.headCommit,
+        ...(upstream
+          ? {
+              upstream: {
+                baseRef: upstream.baseRef,
+                from: upstream.from,
+                to: upstream.to,
+                checkpointTree: previous.snapshot.tree,
+              },
+            }
+          : {}),
       };
-      fromCommit = previous.snapshot.headCommit;
+      // Upstream commits are not this branch's work: list commits from the new fork point.
+      fromCommit = upstream ? upstream.to : previous.snapshot.headCommit;
+      if (upstream) extraParents = [upstream.commit];
     } else if (repository.headCommit === null) {
       baseline = { kind: 'empty', tree: await emptyTree(this.deps.git, repository) };
       fromCommit = null;
@@ -709,6 +793,7 @@ export class PublicationLifecycle {
       message: `git2jira snapshot ${issueKey}`,
       ...(ref ? { ref } : {}),
       ...(request.includeUncommitted === false ? { includeUncommitted: false } : {}),
+      ...(extraParents.length > 0 ? { extraParents } : {}),
     });
     const changeSet = await this.deps.diff.diff(
       repository,

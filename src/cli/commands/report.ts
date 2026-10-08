@@ -7,6 +7,7 @@ import { includeUncommittedSetting } from '../../config/settings';
 import type { GlobalConfig, RepoConfig } from '../../config/schema';
 import { packageWarnings } from '../../ai/engine';
 import { buildSessionRequest } from '../../ai/prompt';
+import { redactSecrets } from '../../ai/redact';
 import { Git2JiraError, UsageError } from '../../core/errors';
 import { terminalSafe, terminalSafeLine } from '../../core/sanitize';
 import { openInBrowser } from '../../delivery/browser';
@@ -19,6 +20,7 @@ import { SUPPORTED_LANGUAGES } from '../../localization/languages';
 import { resolveLanguage } from '../../localization/resolve';
 import type { RepositoryInfo } from '../../git/types';
 import { DEFAULT_MCP_SERVER_NAME } from '../../mcp/tools';
+import { mcpPublicationBlocker } from '../../mcp/verification';
 import { stateDir } from '../../snapshots/engine';
 import { println, type CliContext } from '../context';
 import { exportDraft, runReport, type ReportRunOptions } from './report-run';
@@ -187,14 +189,15 @@ export function createReportCommand(ctx: CliContext): Command {
               includesUncommittedChanges: draft.snapshot.includesUncommittedChanges,
               files: changeSet.files,
               // Everything below comes from the repository or the user: data, never instructions.
+              // Redacted like the generation parts: this output reaches the model too.
               untrusted: {
-                commits: changeSet.commits,
+                commits: changeSet.commits.map((c) => ({ ...c, subject: redacted(c.subject) })),
                 commitsTruncated: changeSet.commitsTruncated,
-                patch: changeSet.patch,
+                patch: redacted(changeSet.patch),
                 patchTruncated: changeSet.patchTruncated,
                 patchExclusions: changeSet.patchExclusions,
-                userContext: draft.userContext ?? null,
-                issueSummary: draft.mode === 'mcp' ? draft.issue.summary : null,
+                userContext: draft.userContext === undefined ? null : redacted(draft.userContext),
+                issueSummary: draft.mode === 'mcp' ? redacted(draft.issue.summary) : null,
               },
               reportContract: {
                 // v2 (schemaVersion 2) is what the writer should produce; v1 is still accepted.
@@ -315,6 +318,15 @@ export function createReportCommand(ctx: CliContext): Command {
       }
       if (options.print) {
         println(ctx.stdout, url);
+        return;
+      }
+      const { repoConfig, globalConfig } = await configs(ctx);
+      if (!isJiraHost(url, [repoConfig.jira?.site, globalConfig.jira?.site])) {
+        // The site of a draft comes from "report prepare --site", which a Skill may run unprompted.
+        println(
+          ctx.stdout,
+          `Not opening ${url}: it is not a configured Jira site. Open it yourself if expected.`,
+        );
         return;
       }
       const opened = await openInBrowser(ctx.container.resolve('processRunner'), url);
@@ -534,6 +546,20 @@ export function createReportCommand(ctx: CliContext): Command {
     .requiredOption('--digest <sha256>', 'digest of the reviewed report')
     .option('--comments <file>', 'retry only: current comment listing proving the report is absent')
     .action(async (options: { report: string; digest: string; comments?: string }) => {
+      const draft = await service().get(ctx.cwd, options.report);
+      if (draft.mode === 'mcp') {
+        const blocker = mcpPublicationBlocker(
+          await ctx.container.resolve('mcpVerificationStore').read(),
+          draft.server,
+          new Date(),
+        );
+        if (blocker) {
+          throw new Git2JiraError(
+            `Automatic publication is off: ${blocker}. Run the access check again (/jira-report does it), ` +
+              `or deliver this report by hand: "git2jira report fallback --report ${draft.reportId}".`,
+          );
+        }
+      }
       const listing =
         options.comments === undefined ? undefined : await readJson(ctx, options.comments);
       const payload = await service().publishMcp(ctx.cwd, options.report, options.digest, listing);
@@ -690,6 +716,10 @@ export async function readJson(ctx: CliContext, file: string): Promise<unknown> 
   }
 }
 
+function redacted(text: string): string {
+  return redactSecrets(text).text;
+}
+
 /**
  * Generation requests go to `<git common dir>/git2jira/requests/`, never into the working
  * tree, readable only by the user: they contain (redacted) diffs.
@@ -706,6 +736,15 @@ async function writeRequestFile(
   await writeFile(temp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   await rename(temp, file);
   return file;
+}
+
+/** Atlassian Cloud hosts, or the host of a configured `jira.site`. */
+function isJiraHost(url: string, configured: readonly (string | undefined)[]): boolean {
+  const host = new URL(url).hostname.toLowerCase();
+  if (host.endsWith('.atlassian.net') || host.endsWith('.jira.com')) return true;
+  return configured.some(
+    (site) => site !== undefined && new URL(site).hostname.toLowerCase() === host,
+  );
 }
 
 function siteLabel(draft: Draft): string {

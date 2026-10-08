@@ -1,15 +1,15 @@
 # Roadmap
 
-| Phase | Scope                                                   | Status  |
-| ----- | ------------------------------------------------------- | ------- |
-| 0     | Foundation and architecture                             | Done    |
-| 1     | Git snapshots and incremental checkpoints               | Done    |
-| 2     | Jira integration, authentication, ADF, and publication  | Done    |
-| 2.5   | Manual reports and Atlassian MCP integration            | Done    |
-| 3     | AI reporting engine and multilingual reports            | Done    |
-| 4     | Claude Code Skill `/jira-report`                        | Done    |
-| 5     | Interactive installer, configuration, and npm packaging | Done    |
-| 6     | Final QA, security audit, and release preparation       | Planned |
+| Phase | Scope                                                   | Status |
+| ----- | ------------------------------------------------------- | ------ |
+| 0     | Foundation and architecture                             | Done   |
+| 1     | Git snapshots and incremental checkpoints               | Done   |
+| 2     | Jira integration, authentication, ADF, and publication  | Done   |
+| 2.5   | Manual reports and Atlassian MCP integration            | Done   |
+| 3     | AI reporting engine and multilingual reports            | Done   |
+| 4     | Claude Code Skill `/jira-report`                        | Done   |
+| 5     | Interactive installer, configuration, and npm packaging | Done   |
+| 6     | Final QA, security audit, and release preparation       | Done   |
 
 ## Phase 0: Foundation (done)
 
@@ -119,6 +119,18 @@
   (draft GitHub release; npm publish only by hand, with provenance). Not published.
 - See [installation.md](installation.md).
 
-## Phase 6: Release
+## Phase 6: QA, security audit, and release preparation (done)
 
-- End-to-end tests against a Jira test site, security review, documentation pass, 1.0.0.
+- Independent audit; seven findings fixed with regression tests (`docs/security.md`, "Phase 6 audit"):
+  pre-approved `report export` could overwrite files (high), `report prepare --json` leaked unredacted
+  diffs (high), repository `core.fsmonitor` could run a program (medium), MCP publish did not require a
+  verified access check (medium), `report open` opened any host (low), unsanitized MCP server names
+  (low), and test isolation from real home directories.
+- Git: rebases onto or merges of a newer base branch no longer report upstream work (three-way
+  baseline with `git merge-tree`, with safe fallback).
+- End-to-end scenarios A–O through the CLI with the shipped Skill permission rules (`tests/e2e`).
+- `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, [release-checklist.md](release-checklist.md) with
+  readiness per delivery mode; version 0.9.0 (release candidate, not published).
+- Still open, needs real environments: Atlassian Rovo MCP against a real (corporate) Jira site, the
+  API-token mode against real Jira Cloud, interactive checks in real Claude Code
+  ([skill-verification.md](skill-verification.md)). 1.0.0 follows those.

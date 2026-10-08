@@ -415,6 +415,18 @@ export async function exportDraft(
   if (!draft.rendered) throw new Git2JiraError(`Report ${draft.reportId} has no text yet.`);
   const repository = await ctx.container.resolve('repositoryLocator').locate(ctx.cwd);
   const extension = format === 'markdown' ? 'md' : 'txt';
+  if (output !== undefined) {
+    // `report export` is pre-approved in the Skill, so inside Claude Code it must not be able
+    // to write anywhere the session chooses.
+    if (ctx.env?.CLAUDECODE) {
+      throw new UsageError(
+        'Inside Claude Code, "report export" writes only to .git/git2jira/exports. Use --output from a terminal.',
+      );
+    }
+    if (!/\.(md|txt)$/i.test(output)) {
+      throw new UsageError('--output must name a .md or .txt file.');
+    }
+  }
   const file = output
     ? path.resolve(ctx.cwd, output)
     : path.join(
@@ -422,7 +434,19 @@ export async function exportDraft(
         `${draft.issueKey}-report-${String(draft.sequence)}-${draft.language}.${extension}`,
       );
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, draft.rendered[format], { encoding: 'utf8', mode: 0o600 });
+  try {
+    // An explicit --output never replaces an existing file; the default export file is ours.
+    await writeFile(file, draft.rendered[format], {
+      encoding: 'utf8',
+      mode: 0o600,
+      flag: output === undefined ? 'w' : 'wx',
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new UsageError(`${file} already exists; Git2Jira does not overwrite it.`);
+    }
+    throw error;
+  }
   return file;
 }
 

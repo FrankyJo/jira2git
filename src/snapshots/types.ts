@@ -40,6 +40,8 @@ export interface CaptureOptions {
    * work is then left out and becomes part of a later report once it is committed.
    */
   includeUncommitted?: boolean;
+  /** Extra parents of the snapshot commit, to keep related objects (an adjusted baseline) alive. */
+  extraParents?: readonly string[];
 }
 
 export interface SnapshotEngine {

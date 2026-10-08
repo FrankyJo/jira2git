@@ -30,6 +30,12 @@ sign-in of the Atlassian Rovo MCP server inside Claude Code.
   says so and offers manual mode; it never tries another way in.
 - Exact error messages for blocked or expired access have not been observed yet; they are classified
   conservatively.
+- Since Phase 6 the CLI enforces it: `report publish` refuses unless the last access check for the same
+  server was `ready` (reads worked, comment tool visible) and is less than 12 hours old. Read-only,
+  blocked, or unchecked access keeps automatic publication off; manual mode stays available.
+- `git2jira doctor` shows four separate facts: registered (`claude mcp list`), authorized (Claude
+  Code's health status, its own statement), Jira read access verified, comment tool available.
+- **Not verified against a real Atlassian site** (see [release-checklist.md](release-checklist.md#readiness)).
 
 ## Provider abstraction
 

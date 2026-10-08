@@ -138,6 +138,11 @@ and refuses to publish without one.
   user passes `--allow-api-billing`. Inside a Claude Code session headless mode is refused. See
   [ai-reporting.md](ai-reporting.md).
 
+### Release status (Phase 6)
+
+All modules are implemented. Readiness per delivery mode and what still needs real environments:
+[release-checklist.md](release-checklist.md#readiness). Audit findings: [security.md](security.md).
+
 ## Data locations
 
 | Data                            | Location                                                                                                                              |
