@@ -7,7 +7,7 @@
 | 2     | Jira integration, authentication, ADF, and publication  | Done    |
 | 2.5   | Manual reports and Atlassian MCP integration            | Done    |
 | 3     | AI reporting engine and multilingual reports            | Done    |
-| 4     | Claude Code Skill `/jira-report`                        | Planned |
+| 4     | Claude Code Skill `/jira-report`                        | Done    |
 | 5     | Interactive installer, configuration, and npm packaging | Planned |
 | 6     | Final QA, security audit, and release preparation       | Planned |
 
@@ -84,14 +84,23 @@
   regenerate, keep, cancel), pending report resume; MCP through the session; API-token interactive publish.
 - See [ai-reporting.md](ai-reporting.md).
 
-## Phase 4: Claude Code Skill
+## Phase 4: Claude Code Skill (done)
 
-- `SKILL.md` for `/jira-report` with `--language`, supporting manual and MCP modes through the Phase 2.5
-  bridge (`report …`, `mcp verify`); MCP tools used only from the main session, never from the
-  read-only analysis subagent.
-- Approval gate through Claude Code permissions plus plan digest; only the read-only subcommands listed in
-  jira-publication.md are pre-approved.
-- Skill installer and status.
+- Skill package `skill/`: `SKILL.md` (`disable-model-invocation`, `argument-hint`, read-only
+  `allowed-tools`), reference instructions (manual, MCP, report contract, recovery), and the read-only
+  `jira-reporter` subagent (`tools: Read, Grep, Glob`).
+- `/jira-report [--language en|uk] [--mode manual|mcp] [--issue KEY]`, validated by the CLI
+  (`skill context --args`); explicit arguments win over configuration.
+- `git2jira skill install|uninstall|status|verify`: user-level installation with a hash manifest,
+  conflict and modification detection, in-place upgrade, own-files-only uninstall, package and
+  permission-rule checks.
+- Bridge additions: `skill context`, `report request` (private request file for the subagent),
+  `report receipt` (publication receipt derived from CLI state), `report verify-comment` (read-back
+  after an MCP publication); JSON on stdin through quoted heredocs.
+- Tests: a simulated Claude Code session drives the CLI with the shipped permission rules (manual and
+  MCP lifecycles, ambiguity, forged evidence, fallback, snapshot integrity, worktrees).
+- Manual guide for real Claude Code and Atlassian MCP: [skill-verification.md](skill-verification.md).
+- See [skill.md](skill.md).
 
 ## Phase 5: Installer and packaging
 

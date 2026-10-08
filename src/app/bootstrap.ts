@@ -1,7 +1,9 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GitRefs } from '../checkpoints/refs';
 import { LineageStore } from '../checkpoints/store';
 import {
+  claudeHomeDir,
   currentPathEnvironment,
   globalConfigDir,
   globalConfigPath,
@@ -29,6 +31,9 @@ import { ClaudeCliRegistry } from '../mcp/claude-code';
 import { McpVerificationStore } from '../mcp/setup';
 import { ClaudeCodeHeadlessProvider } from '../ai/claude-headless';
 import { ReportEngine } from '../ai/engine';
+import { VERSION } from '../core/version';
+import { FileSkillInstaller } from '../skill/installer';
+import { SkillPackageError, findSkillAssets, loadSkillPackage } from '../skill/package';
 import { ServiceContainer } from './container';
 
 /** Composition root for the production CLI. Later phases register their services here. */
@@ -130,5 +135,23 @@ export function createDefaultContainer(): ServiceContainer {
         new McpVerificationStore(
           path.join(globalConfigDir(c.resolve('pathEnvironment')), 'mcp-verification.json'),
         ),
+    )
+    .register(
+      'skillInstaller',
+      (c) =>
+        new FileSkillInstaller({
+          claudeHome: claudeHomeDir(c.resolve('pathEnvironment')),
+          loadPackage: () => {
+            const assets = findSkillAssets(path.dirname(fileURLToPath(import.meta.url)));
+            if (!assets) {
+              return Promise.reject(
+                new SkillPackageError(
+                  'The /jira-report Skill package is missing from this installation.',
+                ),
+              );
+            }
+            return loadSkillPackage(assets, VERSION);
+          },
+        }),
     );
 }

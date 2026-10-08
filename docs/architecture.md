@@ -45,7 +45,7 @@ switches modes by itself. See [jira-publication.md](jira-publication.md#delivery
 | Atlassian MCP          | `src/mcp`          | Documented tool table, bridge schemas, result parsers, access check, `claude mcp` setup | 2.5     |
 | Report schema          | `src/report`       | Structured report v2, validation against Git's facts, terminal preview                  | 3       |
 | AI reporting           | `src/ai`           | Analysis package, redaction, prompts, `ReportEngine`, headless Claude Code provider     | 3       |
-| Claude Code Skill      | `src/skill`        | Installing and checking the `/jira-report` Skill                                        | 4       |
+| Claude Code Skill      | `src/skill`        | `/jira-report` arguments, package checks, approval boundary, installer                  | 4       |
 | Installer              | `src/installer`    | `Prompter` port, @clack/prompts adapter, language and Jira mode steps (2.5), wizard (5) | 2.5 / 5 |
 | Diagnostics            | `src/diagnostics`  | `doctor` checks                                                                         | 5       |
 
@@ -81,15 +81,16 @@ Phase 2 implements everything after the model step as `JiraPublicationService`
 
 Command names in this diagram are the intended design; they will be finalized in Phases 2 to 4.
 
-### Skill-to-CLI bridge (Phase 2.5)
+### Skill-to-CLI bridge (Phase 2.5, driven by the Skill since Phase 4)
 
-Implemented commands for manual and MCP delivery; the Skill that calls them is Phase 4.
+Commands for manual and MCP delivery. Phase 4 adds `skill context` (first call of every run),
+`report request`, `report receipt`, and `report verify-comment`; see [skill.md](skill.md).
 
 ```
 /jira-report (main Claude Code session)
   ├─ git2jira report prepare --json [--mode] [--language]      snapshot, draft, generation request
   │     MCP: first getAccessibleAtlassianResources + getJiraIssue → --site --cloud-id --issue-lookup
-  ├─ the session (read-only subagent in Phase 4) writes the report JSON from `generation`
+  ├─ the session (or the read-only jira-reporter subagent) writes the report JSON from `generation`
   ├─ git2jira report submit --report <id> --input <file>       validate, render md/text/ADF, digest
   ├─ show the report; ask the user
   │
@@ -115,10 +116,12 @@ comment id, report marker, approved digest) and decides; see
 The Skill must not be able to approve on the user's behalf. The planned gate:
 
 1. The Skill's `allowed-tools` pre-approves only subcommands that neither write to Jira nor move a
-   checkpoint (`report prepare`, `submit`, `show`, `pending`, `copy`, `export`, `mcp status`,
-   `mcp verify`). `report confirm`, `revoke`, `cancel`, `publish`, `record-result`, `reconcile`,
-   `fallback`, and the MCP comment tool are never pre-approved, so Claude Code's own permission prompt
-   asks the user to approve the exact command, which is outside the model's control.
+   checkpoint (`skill context|status|verify`, `report prepare`, `request`, `submit`, `show`, `pending`,
+   `copy`, `export`, `receipt`, `mcp status`, `mcp verify`) and the four read-only Atlassian tools.
+   `report confirm`, `revoke`, `cancel`, `recover`, `publish`, `record-result`, `reconcile`,
+   `verify-comment`, `fallback`, and the MCP comment tool are never pre-approved, so Claude Code's own
+   permission prompt asks the user to approve the exact command, which is outside the model's control.
+   The installer refuses a package that breaks this (`src/skill/permissions.ts`).
 2. `publish` requires the plan id and the SHA-256 digest of the previewed report. Any change to the
    report after preview invalidates the approval.
 
@@ -137,20 +140,21 @@ and refuses to publish without one.
 
 ## Data locations
 
-| Data                            | Location                                                                                      |
-| ------------------------------- | --------------------------------------------------------------------------------------------- |
-| Global config                   | `$GIT2JIRA_CONFIG_DIR` or `~/.config/git2jira/config.json` (`%APPDATA%\git2jira` on Windows)  |
-| Repository config (shareable)   | `<repo>/.git2jira.json`                                                                       |
-| Checkpoints, journal, plans     | `<git common dir>/git2jira/` (never in the working tree)                                      |
-| Snapshot and checkpoint commits | `refs/git2jira/<siteId>/<ISSUE>/{candidates,checkpoints}/…` (not pushed by default refspecs)  |
-| Jira connections (no secrets)   | global config, `jira.connections`                                                             |
-| Credentials                     | OS credential store, service `git2jira-ai`, account `jira-api-token:<connection>`             |
-| Report metadata in Jira         | comment property `git2jira.report` (API-token mode) and the comment footer marker (all modes) |
-| Manual and MCP report drafts    | `<git common dir>/git2jira/drafts/<reportId>.json`; exports in `…/git2jira/exports/`          |
-| Delivery mode, MCP server name  | `jira.mode` (global or repository), `mcp.server` (global)                                     |
-| Last MCP access check           | `<config dir>/mcp-verification.json` (no secrets)                                             |
-| MCP OAuth authorization         | Claude Code only; never read by Git2Jira                                                      |
-| Skill                           | `~/.claude/skills/jira-report/`                                                               |
+| Data                            | Location                                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Global config                   | `$GIT2JIRA_CONFIG_DIR` or `~/.config/git2jira/config.json` (`%APPDATA%\git2jira` on Windows)                                          |
+| Repository config (shareable)   | `<repo>/.git2jira.json`                                                                                                               |
+| Checkpoints, journal, plans     | `<git common dir>/git2jira/` (never in the working tree)                                                                              |
+| Snapshot and checkpoint commits | `refs/git2jira/<siteId>/<ISSUE>/{candidates,checkpoints}/…` (not pushed by default refspecs)                                          |
+| Jira connections (no secrets)   | global config, `jira.connections`                                                                                                     |
+| Credentials                     | OS credential store, service `git2jira-ai`, account `jira-api-token:<connection>`                                                     |
+| Report metadata in Jira         | comment property `git2jira.report` (API-token mode) and the comment footer marker (all modes)                                         |
+| Manual and MCP report drafts    | `<git common dir>/git2jira/drafts/<reportId>.json`; exports in `…/git2jira/exports/`                                                  |
+| Delivery mode, MCP server name  | `jira.mode` (global or repository), `mcp.server` (global)                                                                             |
+| Last MCP access check           | `<config dir>/mcp-verification.json` (no secrets)                                                                                     |
+| MCP OAuth authorization         | Claude Code only; never read by Git2Jira                                                                                              |
+| Skill                           | `~/.claude/skills/jira-report/` (manifest `.git2jira-skill.json`), `~/.claude/agents/jira-reporter.md`; `$CLAUDE_CONFIG_DIR` honoured |
+| Generation requests (subagent)  | `<git common dir>/git2jira/requests/<reportId>.json`                                                                                  |
 
 ## Exit codes
 

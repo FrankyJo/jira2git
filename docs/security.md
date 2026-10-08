@@ -12,6 +12,8 @@
 | Report integrity         | Prompt injection from code, README, or Jira text                        | Untrusted content is quoted data; model output is schema-validated, size-bounded, rendered as plain ADF text                                                                |
 | Billing                  | Silent switch from subscription to API-key billing                      | Headless mode checks for API-key configuration and stops to ask                                                                                                             |
 | Claude Code credentials  | Extraction or reuse                                                     | Never read; Skill mode runs in the existing session                                                                                                                         |
+| Approval boundary        | Skill or settings pre-approving a confirmation or publication           | `allowed-tools` checked at build, install, and `skill verify`; `skill verify` warns about permissive user/project rules and `bypassPermissions`                             |
+| User's Claude Code files | Skill installer overwriting or deleting unrelated Skills or agents      | Hash manifest; conflicts are never overwritten; modified files only with `--force`; uninstall removes only manifest files                                                   |
 
 ## Rules
 
@@ -61,7 +63,12 @@
     secret-looking values in diffs, commit subjects, Jira text, user context, and test output are
     redacted; untrusted text is fenced with a random nonce; the headless writer runs without tools, MCP,
     or the repository as working directory. See [ai-reporting.md](ai-reporting.md).
-17. **Model output is checked against Git.** Reports naming files outside the change set, another issue,
+17. **The Skill cannot approve for the user.** `/jira-report` is user-invoked only
+    (`disable-model-invocation`), pre-approves only read-only commands and read-only Atlassian tools,
+    asks for publication with `AskUserQuestion`, and every confirmation, publication, result recording,
+    or fallback goes through Claude Code's permission prompt. Publication receipts are derived from CLI
+    state and never accepted as input. See [skill.md](skill.md).
+18. **Model output is checked against Git.** Reports naming files outside the change set, another issue,
     language, or snapshot, or claiming tests, deployments, or approvals without evidence are rejected.
 
 ## File permissions

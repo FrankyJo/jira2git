@@ -125,10 +125,10 @@ publish this exact digest, regenerate, save the text, or cancel. Without a termi
 
 ## What has not been verified against real systems
 
-| Item                                                                            | Status                                              |
-| ------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `claude -p --json-schema` result envelope (`structured_output`)                 | Checked once by hand with Claude Code 2.1.294       |
-| `claude auth status --json` fields for API key, Bedrock/Vertex, expired sign-in | API-key case checked by hand; others inferred       |
-| Report quality from a real model on large Vue/React repositories                | Not evaluated; tests use a deterministic fake model |
-| Session hand-off driven by the `/jira-report` Skill                             | Phase 4                                             |
-| Rovo MCP tool schemas and result shapes                                         | Unchanged from Phase 2.5: not verified              |
+| Item                                                                            | Status                                                                                                         |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `claude -p --json-schema` result envelope (`structured_output`)                 | Checked once by hand with Claude Code 2.1.294                                                                  |
+| `claude auth status --json` fields for API key, Bedrock/Vertex, expired sign-in | API-key case checked by hand; others inferred                                                                  |
+| Report quality from a real model on large Vue/React repositories                | Not evaluated; tests use a deterministic fake model                                                            |
+| Session hand-off driven by the `/jira-report` Skill                             | Phase 4: simulated session in tests; real Claude Code by hand ([skill-verification.md](skill-verification.md)) |
+| Rovo MCP tool schemas and result shapes                                         | Unchanged from Phase 2.5: not verified                                                                         |

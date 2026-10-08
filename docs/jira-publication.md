@@ -7,7 +7,7 @@ Tests: `tests/jira`, `tests/adf`, `tests/publication`, `tests/credentials`, `tes
 (all against a mocked Jira server; no test talks to a real site).
 
 The `git2jira report` command drives this flow end to end since Phase 3 (see
-[ai-reporting.md](ai-reporting.md)); the Skill arrives in Phase 4. Phase 2 delivers the service it will call (`JiraPublicationService`) and the
+[ai-reporting.md](ai-reporting.md)), and the `/jira-report` Skill since Phase 4 ([skill.md](skill.md)). Phase 2 delivers the service it will call (`JiraPublicationService`) and the
 `login`, `logout`, `connections`, `history`, `recover`, and `status --jira` commands.
 
 ## Jira REST client
@@ -296,7 +296,7 @@ calls MCP. The split:
   entry, interpreting results, and every decision about retries and checkpoints.
 - **Claude Code session (Skill)**: writes the report, shows it, asks for approval, and calls the MCP
   tools. It hands raw tool results to the CLI as JSON files (`src/mcp/bridge.ts`).
-- The read-only analysis subagent (Phase 4) gets no write tools.
+- The read-only analysis subagent `jira-reporter` (Phase 4) has only Read, Grep, and Glob.
 
 ### Tools
 
@@ -430,9 +430,15 @@ git2jira mcp setup [--name NAME] [--scope user|local|project] [--yes]
 git2jira mcp status | verify --input FILE
 ```
 
-Safe to pre-approve in a Skill (no Jira write, no checkpoint move): `report prepare`, `submit`, `show`,
-`pending`, `export`, `copy`, `mcp status`, `mcp verify`. Never pre-approved: `report confirm`, `revoke`,
-`cancel`, `publish`, `record-result`, `reconcile`, `fallback`, `mcp setup`, and the MCP comment tool.
+Phase 4 adds `report request --report ID` (generation request to a private file), `report receipt
+--report ID` (publication receipt), and `report verify-comment --report ID --input FILE` (read-back after
+`PUBLISHED`); see [skill.md](skill.md).
+
+Safe to pre-approve in a Skill (no Jira write, no checkpoint move): `skill context`, `skill status`,
+`skill verify`, `report prepare`, `request`, `submit`, `show`, `pending`, `export`, `copy`, `receipt`,
+`mcp status`, `mcp verify`. Never pre-approved: `report confirm`, `revoke`, `cancel`, `recover`,
+`publish`, `record-result`, `reconcile`, `verify-comment`, `fallback`, `mcp setup`, `skill install`,
+`skill uninstall`, and the MCP comment tool.
 
 `git2jira report` without a subcommand (Phase 3) writes, previews, and delivers a report end to end,
 in every mode; see [ai-reporting.md](ai-reporting.md). `report prepare --json` now also includes the

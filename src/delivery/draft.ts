@@ -200,6 +200,17 @@ export const McpDraftSchema = z.strictObject({
       publishedAt: z.iso.datetime(),
       /** `tool-result`: from the create call's result; `read-back`: found in a comment listing. */
       evidence: z.enum(['tool-result', 'read-back']),
+      /**
+       * Later check of a `tool-result` publication against a comment listing (Phase 4).
+       * Informational: it never moves or withdraws the checkpoint.
+       */
+      readBack: z
+        .strictObject({
+          at: z.iso.datetime(),
+          result: z.enum(['found', 'not-found', 'incomplete']),
+          detail: z.string().max(500).optional(),
+        })
+        .optional(),
     })
     .optional(),
   duplicateCommentIds: z.array(z.string()).optional(),

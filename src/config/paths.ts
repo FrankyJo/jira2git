@@ -61,3 +61,14 @@ async function exists(target: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Claude Code's user directory, where user-level Skills (`skills/`) and subagents
+ * (`agents/`) live. Claude Code itself honours `CLAUDE_CONFIG_DIR`; so does Git2Jira,
+ * which also keeps tests and scratch runs away from the real `~/.claude`.
+ */
+export function claudeHomeDir({ env, homeDir }: PathEnvironment): string {
+  const override = env.CLAUDE_CONFIG_DIR;
+  if (override) return path.resolve(override);
+  return path.join(homeDir, '.claude');
+}

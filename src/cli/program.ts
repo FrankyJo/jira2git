@@ -6,6 +6,7 @@ import { createHistoryCommand, createRecoverCommand } from './commands/history';
 import { createMcpCommand } from './commands/mcp';
 import { PLANNED_COMMANDS, createPlannedCommand } from './commands/planned';
 import { createReportCommand } from './commands/report';
+import { createSkillCommand } from './commands/skill';
 import { createStatusCommand } from './commands/status';
 import type { CliContext } from './context';
 
@@ -32,6 +33,7 @@ export function createProgram(ctx: CliContext): Command {
   program.addCommand(createRecoverCommand(ctx));
   program.addCommand(createReportCommand(ctx));
   program.addCommand(createMcpCommand(ctx));
+  program.addCommand(createSkillCommand(ctx));
   for (const spec of PLANNED_COMMANDS) program.addCommand(createPlannedCommand(spec));
 
   // Apply the same output and exit behaviour to every subcommand.

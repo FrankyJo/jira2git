@@ -2,13 +2,13 @@
 
 Turn Git changes into professional, incremental Jira implementation reports, written by Claude Code.
 
-> **Status: Phase 3 (AI reporting).** `git2jira report` analyzes the changes since the last confirmed
-> report, has Claude Code write the report (your current session, or `claude -p` from a terminal with
-> your own sign-in), validates it against Git, previews it, and delivers it (manual, MCP, or API token).
-> Missing: the installed `/jira-report` Skill (Phase 4) and the setup wizard (Phase 5). See
+> **Status: Phase 4 (Claude Code Skill).** `/jira-report` works in any Git repository after a one-time
+> `git2jira skill install`: your Claude Code session writes the report, the CLI validates it against Git,
+> and you deliver it by copy and paste (manual) or through Atlassian Rovo MCP. `git2jira report` does the
+> same from a terminal. Missing: the setup wizard and npm package (Phase 5). See
 > [docs/roadmap.md](docs/roadmap.md).
 
-## What it will do
+## What it does
 
 Open any Git repository in Claude Code and run:
 
@@ -16,7 +16,7 @@ Open any Git repository in Claude Code and run:
 /jira-report
 ```
 
-Git2Jira AI will:
+Git2Jira AI:
 
 1. Detect the repository and branch, and extract the Jira issue key (`feature/LSND-1234-user-profile` → `LSND-1234`).
 2. Find the last report it published for that issue.
@@ -55,8 +55,19 @@ Not published to npm yet. To try the development build:
 ```sh
 pnpm install
 pnpm build
-node dist/cli.js --help
+pnpm link --global        # puts `git2jira` on your PATH
+git2jira skill install    # once: installs /jira-report for your user (all repositories)
 ```
+
+Then, in any Git repository:
+
+```
+claude
+/jira-report                      # or: --language en|uk, --issue KEY-123, --mode manual|mcp
+```
+
+`git2jira skill status | verify | uninstall` manage the installation; it never overwrites a Skill or
+agent it did not install. See [docs/skill.md](docs/skill.md).
 
 ## Configuration
 
@@ -134,7 +145,7 @@ git2jira mcp status       # registration and the last access check
 The OAuth sign-in belongs to Claude Code; Git2Jira never sees or copies it, and cannot tell from the
 outside whether it succeeded. Access is verified only by read-only tool calls made inside Claude Code
 (`git2jira mcp verify`). If your organization blocks Rovo MCP or its write tools, use manual mode. The
-MCP workflow is driven by the `/jira-report` Skill (Phase 4); see
+MCP workflow is driven by the `/jira-report` Skill; see [docs/skill.md](docs/skill.md#mcp-mode) and
 [docs/jira-publication.md](docs/jira-publication.md#mcp-mode).
 
 ## Connect to Jira with an API token (optional)
@@ -177,6 +188,7 @@ git2jira status --json
 | `report`      | Write, preview, and deliver the next report (all modes)      | Now       |
 | `report …`    | Prepare, submit, copy, confirm, publish (manual and MCP)     | Now       |
 | `mcp`         | Register and check the Atlassian MCP connection              | Now       |
+| `skill`       | Install, upgrade, check, and remove `/jira-report`           | Now       |
 | `history`     | List published reports, cross-checked with Jira              | Now       |
 | `recover`     | Repair interrupted publications and lost checkpoints         | Now       |
 | `uninstall`   | Remove the Skill, credentials, and configuration             | Phase 5   |
@@ -202,6 +214,7 @@ Details: [docs/security.md](docs/security.md).
 - [Architecture](docs/architecture.md)
 - [Git snapshots and incremental diffs](docs/git-snapshots.md)
 - [Jira publication](docs/jira-publication.md)
+- [The /jira-report Skill](docs/skill.md) and [manual verification in Claude Code](docs/skill-verification.md)
 - [Authentication](docs/authentication.md)
 - [Localization](docs/localization.md)
 - [Security](docs/security.md)

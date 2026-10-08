@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { findRepositoryRoot } from '../../config/paths';
@@ -14,7 +15,9 @@ import type { DraftRecoveryAction, McpResultOutcome } from '../../delivery/servi
 import { resolveDeliverySite } from '../../delivery/site';
 import { SUPPORTED_LANGUAGES } from '../../localization/languages';
 import { resolveLanguage } from '../../localization/resolve';
+import type { RepositoryInfo } from '../../git/types';
 import { DEFAULT_MCP_SERVER_NAME } from '../../mcp/tools';
+import { stateDir } from '../../snapshots/engine';
 import { println, type CliContext } from '../context';
 import { exportDraft, runReport, type ReportRunOptions } from './report-run';
 
@@ -250,6 +253,56 @@ export function createReportCommand(ctx: CliContext): Command {
     });
 
   report
+    .command('request')
+    .description(
+      'Write the generation request of a pending report to a private file, for the report writer (read-only).',
+    )
+    .requiredOption('-r, --report <id>', 'report id')
+    .option('--json', 'print machine-readable JSON (always JSON)')
+    .action(async (options: { report: string }) => {
+      const draft = await service().get(ctx.cwd, options.report);
+      if (!isOpen(draft)) {
+        throw new Git2JiraError(`Report ${draft.reportId} is ${draft.status}; it is finished.`);
+      }
+      const analysis = await service().analysis(ctx.cwd, draft.reportId);
+      const generation = buildSessionRequest(analysis);
+      const repository = await ctx.container.resolve('repositoryLocator').locate(ctx.cwd);
+      const payload = {
+        result: 'request',
+        ...draftSummary(draft),
+        files: analysis.files,
+        reportContract: {
+          schemaVersion: 2,
+          accepts: [1, 2],
+          issueKey: draft.issueKey,
+          language: draft.language,
+        },
+        coverage: analysis.coverage,
+        testStatus: analysis.testStatus,
+        warnings: packageWarnings(analysis),
+        generation: {
+          instructions: generation.instructions,
+          parts: generation.parts,
+          schema: generation.schema,
+        },
+      };
+      const requestFile = await writeRequestFile(repository, draft.reportId, payload);
+      println(ctx.stdout, JSON.stringify({ ...payload, requestFile }, null, 2));
+    });
+
+  report
+    .command('receipt')
+    .description('Print the publication receipt of a report, derived from local state (read-only).')
+    .requiredOption('-r, --report <id>', 'report id')
+    .option('--json', 'print machine-readable JSON (always JSON)')
+    .action(async (options: { report: string }) => {
+      println(
+        ctx.stdout,
+        JSON.stringify(await service().receipt(ctx.cwd, options.report), null, 2),
+      );
+    });
+
+  report
     .command('show')
     .description('Display a pending report (read-only).')
     .option('-r, --report <id>', 'report id (default: the only pending report)')
@@ -468,7 +521,7 @@ export function createReportCommand(ctx: CliContext): Command {
         options.report,
         await readJson(ctx, options.input),
       );
-      printMcpOutcome(ctx, outcome, options.json);
+      await printMcpOutcome(ctx, outcome, options.json);
     });
 
   report
@@ -483,7 +536,44 @@ export function createReportCommand(ctx: CliContext): Command {
         options.report,
         await readJson(ctx, options.input),
       );
-      printMcpOutcome(ctx, outcome, options.json);
+      await printMcpOutcome(ctx, outcome, options.json);
+    });
+
+  report
+    .command('verify-comment')
+    .description(
+      'MCP mode: check a published report against a listing of the issue comments (read-back).',
+    )
+    .requiredOption('-r, --report <id>', 'report id')
+    .requiredOption('--input <file>', '{ "comments": <listing>, "account": <user info> } JSON')
+    .option('--json', 'print machine-readable JSON')
+    .action(async (options: { report: string; input: string; json?: boolean }) => {
+      const outcome = await service().verifyMcpPublication(
+        ctx.cwd,
+        options.report,
+        await readJson(ctx, options.input),
+      );
+      if (options.json) {
+        println(
+          ctx.stdout,
+          JSON.stringify(
+            {
+              result: outcome.result,
+              detail: outcome.detail ?? null,
+              receipt: await service().receipt(ctx.cwd, options.report),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      println(
+        ctx.stdout,
+        outcome.result === 'found'
+          ? `Report #${String(outcome.draft.sequence)} is visible in Jira (comment ${outcome.draft.publication?.commentId ?? ''}).`
+          : `Report #${String(outcome.draft.sequence)} could not be confirmed by the listing (${outcome.result}${outcome.detail ? `: ${terminalSafeLine(outcome.detail)}` : ''}). The checkpoint is unchanged; check the issue in Jira.`,
+      );
     });
 
   report
@@ -567,6 +657,24 @@ export async function readJson(ctx: CliContext, file: string): Promise<unknown> 
   } catch {
     throw new UsageError(`${file === '-' ? 'stdin' : file} is not valid JSON.`);
   }
+}
+
+/**
+ * Generation requests go to `<git common dir>/git2jira/requests/`, never into the working
+ * tree, readable only by the user: they contain (redacted) diffs.
+ */
+async function writeRequestFile(
+  repository: RepositoryInfo,
+  reportId: string,
+  payload: unknown,
+): Promise<string> {
+  const dir = path.join(stateDir(repository), 'requests');
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const file = path.join(dir, `${reportId}.json`);
+  const temp = `${file}.${randomUUID()}.tmp`;
+  await writeFile(temp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  await rename(temp, file);
+  return file;
 }
 
 function siteLabel(draft: Draft): string {
@@ -660,12 +768,21 @@ export function nextSteps(draft: Draft): string[] {
   }
 }
 
-function printMcpOutcome(ctx: CliContext, outcome: McpResultOutcome, json?: boolean): void {
+async function printMcpOutcome(
+  ctx: CliContext,
+  outcome: McpResultOutcome,
+  json?: boolean,
+): Promise<void> {
   if (json) {
     const { draft, ...rest } = outcome;
+    const receipt = await ctx.container.resolve('deliveryService').receipt(ctx.cwd, draft.reportId);
     println(
       ctx.stdout,
-      JSON.stringify({ ...rest, reportId: draft.reportId, sequence: draft.sequence }, null, 2),
+      JSON.stringify(
+        { ...rest, reportId: draft.reportId, sequence: draft.sequence, receipt },
+        null,
+        2,
+      ),
     );
     return;
   }

@@ -47,6 +47,7 @@ import {
 import { stateDir } from '../snapshots/engine';
 import type { ChangeSet, DiffOptions, FileChange, IncrementalDiffEngine } from '../snapshots/types';
 import { isOpen, type Draft, type DraftStore, type ManualDraft, type McpDraft } from './draft';
+import { buildReceipt, type PublicationReceipt } from './receipt';
 import { markerLine, renderTextReport } from './render';
 
 export interface DeliveryServiceDependencies {
@@ -905,6 +906,75 @@ export class ReportDeliveryService {
         true,
       );
     });
+  }
+
+  /**
+   * Checks a published MCP report against a comment listing the Skill fetched after the
+   * create call: the independent read-back of what the tool result said. Records the
+   * result on the draft; it never moves or withdraws the checkpoint (a missing comment
+   * is a reason to look in Jira, not proof that it was never created).
+   */
+  async verifyMcpPublication(
+    cwd: string,
+    reportId: string,
+    input: unknown,
+  ): Promise<{ draft: McpDraft; result: 'found' | 'not-found' | 'incomplete'; detail?: string }> {
+    const parsed = McpReconcileInputSchema.parse(input);
+    const repository = await this.deps.locator.locate(cwd);
+    const initial = this.requireMcp(await this.deps.drafts.read(repository, reportId));
+    return this.withLineageLock(repository, initial, async () => {
+      const draft = this.requireMcp(await this.deps.drafts.read(repository, reportId));
+      const publication = draft.publication;
+      if (!['PUBLISHED', 'RECOVERED'].includes(draft.status) || !publication) {
+        throw new Git2JiraError(
+          `Report ${reportId} is ${draft.status}; only a published report can be verified. ` +
+            'For an unknown outcome, use "git2jira report reconcile".',
+        );
+      }
+      const found = this.findInListing(draft, parsed);
+      let result: 'found' | 'not-found' | 'incomplete';
+      let detail: string | undefined;
+      if (found.kind === 'found') {
+        if (found.comment.id === publication.commentId) result = 'found';
+        else {
+          result = 'not-found';
+          detail = `the marker is on comment ${found.comment.id}, but comment ${publication.commentId} was recorded`;
+        }
+      } else if (found.kind === 'incomplete') {
+        result = 'incomplete';
+        detail = found.reason;
+      } else {
+        result = 'not-found';
+        detail = `comment ${publication.commentId} with this report's marker is not in the listing`;
+      }
+      const updated = await this.deps.drafts.transition(
+        repository,
+        draft,
+        {
+          ...draft,
+          publication: {
+            ...publication,
+            readBack: {
+              at: this.now().toISOString(),
+              result,
+              ...(detail ? { detail: terminalSafeLine(detail, 500) } : {}),
+            },
+          },
+        },
+        this.now(),
+        `read-back: ${result}`,
+      );
+      return { draft: updated, result, ...(detail ? { detail } : {}) };
+    });
+  }
+
+  /** The publication receipt of a report, derived from the draft and the journal. Read-only. */
+  async receipt(cwd: string, reportId: string): Promise<PublicationReceipt> {
+    const repository = await this.deps.locator.locate(cwd);
+    const draft = await this.deps.drafts.read(repository, reportId);
+    const journal = await this.deps.store.read(repository, draft.site.id, draft.issueKey);
+    const record = journal?.records.find((r) => r.reportId === reportId);
+    return buildReceipt({ draft, record, now: this.now(), cliVersion: this.toolVersion });
   }
 
   /**
