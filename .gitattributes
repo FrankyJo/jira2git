@@ -1,0 +1,5 @@
+# LF everywhere, also in Windows checkouts (Prettier and the CLI shebang need LF).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.tgz binary
