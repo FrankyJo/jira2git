@@ -1,0 +1,87 @@
+name: Release
+
+# Builds and verifies the npm package for a version tag and attaches the tarball to a
+# GitHub release. Publishing to npm is a separate, manual job: it runs only when started
+# by hand with "publish: true", and only after the "npm" environment's reviewers approve.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the verified tarball to npm (requires the npm environment approval)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Check that the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - id: pack
+        run: |
+          mkdir -p out
+          pnpm pack --pack-destination out
+          echo "tarball=$(ls out/*.tgz | head -n 1)" >> "$GITHUB_OUTPUT"
+      - name: Install the tarball outside the repository and run it
+        run: node scripts/verify-package.mjs "${{ steps.pack.outputs.tarball }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: out/*.tgz
+
+  github-release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: out
+      - name: Create a draft GitHub release with the tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" out/*.tgz --repo "${GITHUB_REPOSITORY}" --draft --generate-notes
+
+  npm-publish:
+    needs: package
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish out/*.tgz --provenance --access public

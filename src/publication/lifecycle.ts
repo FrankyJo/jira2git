@@ -85,6 +85,8 @@ export interface AnalysisRequest {
   /** Continue a lineage whose last report was made on another branch. */
   acceptBranchChange?: boolean | undefined;
   diffOptions?: Partial<DiffOptions> | undefined;
+  /** `report.includeUncommitted`; true when absent. */
+  includeUncommitted?: boolean | undefined;
 }
 
 export interface ReportContext {
@@ -706,6 +708,7 @@ export class PublicationLifecycle {
     const snapshot = await this.deps.snapshots.capture(repository, {
       message: `git2jira snapshot ${issueKey}`,
       ...(ref ? { ref } : {}),
+      ...(request.includeUncommitted === false ? { includeUncommitted: false } : {}),
     });
     const changeSet = await this.deps.diff.diff(
       repository,

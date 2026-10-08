@@ -1,210 +1,310 @@
 # Git2Jira AI
 
-Turn Git changes into professional, incremental Jira implementation reports, written by Claude Code.
+Generate incremental, professional Jira implementation reports from your Git changes with Claude Code.
 
-> **Status: Phase 4 (Claude Code Skill).** `/jira-report` works in any Git repository after a one-time
-> `git2jira skill install`: your Claude Code session writes the report, the CLI validates it against Git,
-> and you deliver it by copy and paste (manual) or through Atlassian Rovo MCP. `git2jira report` does the
-> same from a terminal. Missing: the setup wizard and npm package (Phase 5). See
-> [docs/roadmap.md](docs/roadmap.md).
+> **Status: 0.5.0 (Phase 5).** Setup wizard, diagnostics, and npm packaging are done. The package is
+> **not published to npm yet**. The name `git2jira-ai` was free on npm when checked on 2026-10-08 and
+> must be checked again right before publishing. Until then, install from a tarball (below). Real
+> Atlassian MCP authorization and Jira write access have **not** been verified by the automated tests;
+> see [docs/skill-verification.md](docs/skill-verification.md).
 
 ## What it does
 
-Open any Git repository in Claude Code and run:
-
 ```
+cd my-project
+claude
 /jira-report
 ```
 
-Git2Jira AI:
+1. Detects the repository and branch, and extracts the Jira issue key (`feature/LSND-1234-user-profile`
+   → `LSND-1234`).
+2. Finds the last report you confirmed for that issue.
+3. Analyzes **only the changes since that report**, including uncommitted work (configurable).
+4. Your current Claude Code session writes a structured report in English or Ukrainian. No separate
+   Anthropic API key is needed.
+5. Git2Jira validates it against Git (no invented files, tests, or approvals) and shows it in full.
+6. You deliver it:
+   - **Manual**: copy it into the Jira issue and confirm that you did. No Jira access needed.
+   - **Atlassian MCP**: after your explicit approval, Claude Code adds it as a **new** comment through
+     the official Atlassian Rovo MCP server (OAuth in your browser). Existing comments are never edited.
+7. Saves a checkpoint only after the report is confirmed (by you, or by the Jira response).
 
-1. Detect the repository and branch, and extract the Jira issue key (`feature/LSND-1234-user-profile` → `LSND-1234`).
-2. Find the last report it published for that issue.
-3. Analyze **only the changes since that report**, including uncommitted work.
-4. Use your current Claude Code session to write a structured report in your language (English or Ukrainian).
-5. Show a preview and wait for your explicit approval.
-6. Deliver it, in the mode you chose:
-   - **Manual**: you copy the report, paste it into the Jira issue, and confirm that you did.
-   - **Atlassian MCP**: Claude Code publishes it as a **new** comment through the official Atlassian
-     Rovo MCP server, signed in with OAuth in your browser. Existing comments are never edited.
-7. Save a checkpoint so the next report starts where this one ended, only after the report is
-   confirmed in Jira (MCP) or by you (manual).
-
-If nothing changed since the last report, nothing is published.
-
-| Day | Work                                  | `/jira-report` result                |
-| --- | ------------------------------------- | ------------------------------------ |
-| 1   | Create components A and B             | Report #1: A and B                   |
-| 6   | Modify B, implement API integration C | Report #2: only the B changes, and C |
-| 7   | No changes                            | No comment                           |
-
-No separate Anthropic API key is needed: in Skill mode the analysis runs in the Claude Code session you
-already have open.
-
-## Requirements
-
-- Node.js 22.12 or newer
-- Git
-- Claude Code
-- A Jira Cloud site. Manual mode needs no Jira access at all from Git2Jira.
+| Day | Work                                  | `/jira-report` result                       |
+| --- | ------------------------------------- | ------------------------------------------- |
+| 1   | Create components A and B             | Report #1: A and B                          |
+| 6   | Modify B, implement API integration C | Report #2: only the B changes, and C        |
+| 7   | No changes                            | "No new changes since the previous report." |
 
 ## Installation
 
-Not published to npm yet. To try the development build:
+Requirements: Node.js 22.12+, Git, [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup)
+(signed in), and a Jira Cloud site.
+
+Once the package is published, the intended commands are:
 
 ```sh
-pnpm install
-pnpm build
-pnpm link --global        # puts `git2jira` on your PATH
-git2jira skill install    # once: installs /jira-report for your user (all repositories)
+npm install -g git2jira-ai     # /jira-report calls "git2jira" from your PATH
+git2jira init
 ```
 
-Then, in any Git repository:
+`npx git2jira-ai init` also runs the wizard, but `/jira-report` needs `git2jira` on your PATH, so the
+wizard and `git2jira doctor` tell you to install it globally.
+
+Until then, build and install the tarball:
+
+```sh
+pnpm install && pnpm pack                    # → git2jira-ai-0.5.0.tgz
+npm install -g ./git2jira-ai-0.5.0.tgz
+git2jira init
+```
+
+### The setup wizard (`git2jira init`)
+
+1. **Welcome**, then an **environment check**: operating system, Node.js, Git, Claude Code, whether
+   Claude Code is signed in (`claude auth status`; its files are never read), an `ANTHROPIC_API_KEY`
+   that could switch billing to an API account, `git2jira` on PATH, and an existing installation.
+2. **"How would you like to work with Jira?"**
+   - **Atlassian MCP**: browser authorization and automatic publishing after approval. Needs an
+     authorized Atlassian Rovo MCP connection and your company's approval.
+   - **Manual**: generate and copy reports without Jira access. No API tokens or Jira authorization.
+   - _Personal API token (advanced)_: only for personal use where your company allows API tokens.
+
+   Manual is preselected when MCP is unavailable (no Claude Code, or a previous check found Rovo MCP
+   blocked by your organization).
+
+3. **MCP setup** (if chosen): reuses an existing Atlassian server (any name, left unchanged) or, with
+   your consent, runs
+   `claude mcp add --transport http --scope user atlassian https://mcp.atlassian.com/v2/mcp` (syntax
+   checked against Claude Code 2.1.294). It never changes other MCP servers and never signs in for you;
+   it explains the `/mcp` → Authenticate step.
+4. **"Which language should Git2Jira AI use for Jira reports?"** English (default) or Ukrainian.
+5. Optional settings: uncommitted changes, a test command, opening Jira after publishing.
+6. A **summary**. Nothing is changed before you confirm it; cancelling at any point changes nothing.
+7. Applies the settings, installs `/jira-report`, runs `git2jira doctor`, and shows the next steps.
+
+Non-interactive: `git2jira init --yes --mode manual --language uk`. See
+[docs/installation.md](docs/installation.md).
+
+## Using `/jira-report`
 
 ```
-claude
-/jira-report                      # or: --language en|uk, --issue KEY-123, --mode manual|mcp
+/jira-report                    # mode and language from your settings
+/jira-report --language en      # English report
+/jira-report --language uk      # Ukrainian report
+/jira-report --issue LSND-1234  # when the branch name has no issue key
+/jira-report --mode manual      # copy and paste this time
+/jira-report --mode mcp         # publish through Atlassian MCP this time
 ```
 
-`git2jira skill status | verify | uninstall` manage the installation; it never overwrites a Skill or
-agent it did not install. See [docs/skill.md](docs/skill.md).
+Arguments override your configuration for that run. The Skill shows the complete report first, asks you
+with Claude Code's question dialog, and every confirmation or publication goes through Claude Code's
+permission prompt. See [docs/skill.md](docs/skill.md).
+
+### Example (English)
+
+```
+## Implementation Report #2
+
+### Summary
+
+Implemented the user profile page and connected it to the profile API.
+
+### Completed Work
+
+- **UserProfileView** (Added): Added a component that shows the user's profile.
+- **GET /api/profile** (Changed): Loaded the profile data with error handling.
+
+### Testing and Validation
+
+No tests were run for this report.
+
+---
+
+Git2Jira report 3f6c… · #2
+```
+
+### Приклад (українською)
+
+```
+## Звіт про реалізацію #2
+
+### Підсумок
+
+Реалізовано сторінку профілю користувача та підключено її до API профілю.
+
+### Виконані роботи
+
+- **UserProfileView** (Додано): Додано компонент для перегляду профілю.
+- **GET /api/profile** (Змінено): Завантаження даних профілю з обробкою помилок.
+
+### Тестування та перевірки
+
+Для цього звіту тести не запускалися.
+
+---
+
+Git2Jira report 3f6c… · #2
+```
+
+Code identifiers, paths, endpoints, and issue keys stay unchanged in both languages.
+
+## Manual mode
+
+No Jira credentials, API token, or MCP connection. `/jira-report` (or `git2jira report` in a terminal)
+writes the report; you copy it (`report copy`), save it (`report export`), or open the issue
+(`report open`), paste it as a comment, and confirm.
+
+**Publication confirmation.** Copying, exporting, or showing never moves the checkpoint. Only your
+explicit confirmation does (`report confirm --report <id> --digest <sha256>`, which Claude Code asks you
+to approve). It is recorded as **user-attested**: Git2Jira has not seen the comment in Jira. If you have
+not published it yet, the report stays pending and `/jira-report` offers it again. A mistaken
+confirmation can be withdrawn with `git2jira report revoke`.
+
+```sh
+git2jira report                             # terminal: analyze, write (claude -p), preview, deliver
+git2jira report --dry-run                   # preview only: nothing saved, no checkpoint moved
+git2jira report --mode manual --language uk
+git2jira report --language en
+git2jira report pending                     # unfinished reports
+```
+
+## Atlassian MCP mode
+
+```sh
+git2jira mcp setup                  # or let "git2jira init" do it
+# in Claude Code: /mcp → select the Atlassian server → Authenticate (browser)
+git2jira doctor                     # registration, authorization, read access, write access
+```
+
+The OAuth authorization belongs to Claude Code. Git2Jira never reads, stores, or passes on OAuth tokens,
+and there is no `git2jira login` for MCP. `/jira-report` checks access with read-only tool calls before
+it offers to publish, asks for your approval of the exact report, calls the comment tool once, and saves
+the checkpoint only when the result carries the report's marker. Unclear results stay `UNCERTAIN` and
+are settled from a comment listing; nothing is sent twice.
+
+`git2jira doctor` reports four separate facts: **registered** (from `claude mcp list`), **authorized**
+(Claude Code's own health status), **Jira read access verified** (from the last `/jira-report` access
+check), and **comment creation available** (the write tool was visible; writing itself is proven only by
+the first publication).
+
+### MCP troubleshooting
+
+| Symptom                                         | What to do                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| doctor: "no Atlassian MCP server is registered" | `git2jira mcp setup`                                                         |
+| doctor: "needs authentication"                  | Claude Code → `/mcp` → Atlassian → Authenticate                              |
+| `/jira-report`: `no-tools`                      | Restart Claude Code after registering; check `/mcp`                          |
+| `/jira-report`: `not-authenticated`             | Authenticate again in `/mcp`; the sign-in may have expired                   |
+| `/jira-report`: `read-only`                     | Write access is not granted; use manual mode or ask your administrator       |
+| `/jira-report`: `blocked-by-policy`             | Your organization blocks Rovo MCP; use manual mode                           |
+| The configured site is not listed               | `jira.site` must be a site your Atlassian account can see                    |
+| Read tools ask for permission every time        | Your server is not named `atlassian`; that is safe, the prompts are expected |
+
+### Corporate authorization restrictions
+
+Atlassian administrators can block Rovo MCP or its write access, and organizations may forbid personal
+API tokens. Git2Jira does not work around these controls: it reports the restriction and offers manual
+mode, which needs no Jira access at all. Use the API-token mode only where your company allows it.
+
+## Supported authentication methods
+
+| Mode        | Jira authorization                                 | Stored by Git2Jira                    |
+| ----------- | -------------------------------------------------- | ------------------------------------- |
+| `manual`    | none                                               | nothing                               |
+| `mcp`       | OAuth in your browser, inside Claude Code (`/mcp`) | the MCP server name only              |
+| `api-token` | personal Atlassian API token (optional)            | token in the OS credential store only |
+
+```sh
+git2jira login            # API-token mode only: site, email, masked token, verified before storing
+git2jira connections --check
+git2jira logout
+```
+
+See [docs/authentication.md](docs/authentication.md).
 
 ## Configuration
 
-Report language: `en` (English, default) or `uk` (Ukrainian).
-
 ```sh
-git2jira config get report.language          # effective value
-git2jira config set report.language uk        # global setting
-git2jira config set report.language en --repo # this repository only (.git2jira.json)
-git2jira config list                          # all settings with their source
-git2jira config path                          # where the files live
-```
-
-Base branch for the first report of an issue (repository only; otherwise detected, and you are asked
-when it is ambiguous):
-
-```sh
+git2jira config list                              # all settings, effective value and source
+git2jira config get report.language
+git2jira config set report.language en            # English (default)
+git2jira config set report.language uk            # Ukrainian
+git2jira config set report.language uk --repo     # this repository only (.git2jira.json)
+git2jira config set jira.mode manual              # manual | mcp | api-token
+git2jira config set jira.site https://example.atlassian.net
+git2jira config set report.includeUncommitted false
+git2jira config set report.testCommand "pnpm test"    # global only; run without a shell
+git2jira config set jira.openAfterPublish true
 git2jira config set base.branch develop --repo
+git2jira config path
 ```
 
-The language is chosen in this order: the `--language` option of a run, then the repository config,
-then the global config, then English.
+Precedence: the `/jira-report` or `--language`/`--mode` argument, then the repository configuration,
+then the global configuration, then the default. The report language applies to manual and MCP reports
+alike. Configuration files never contain tokens, and no setting turns off the approval before
+publishing.
 
-Configuration files never contain credentials. Jira credentials are kept in your operating system's
-credential store (Keychain, Windows Credential Manager, or Secret Service).
+## Incremental checkpoints
 
-## Choose how reports reach Jira
+Each report is bound to a snapshot of your working tree (a private Git object under `refs/git2jira/`,
+never pushed; your index and files are untouched). The next report compares against the last
+**confirmed** snapshot. Work you do while a report is under review is not included in it and appears in
+the next report. With `report.includeUncommitted false`, only committed work is reported; uncommitted
+work waits until it is committed. See [docs/git-snapshots.md](docs/git-snapshots.md).
 
-| Mode        | What you need                                          | Who writes to Jira                          | Checkpoint moves when…                           |
-| ----------- | ------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------ |
-| `manual`    | Nothing (default)                                      | You, by pasting                             | you confirm you pasted it (user-attested)        |
-| `mcp`       | Claude Code + Atlassian Rovo MCP, OAuth in Claude Code | your Claude Code session, after you approve | the MCP result shows the comment with its marker |
-| `api-token` | A personal API token (optional, legacy/personal)       | `git2jira` itself                           | Jira's API returns the comment                   |
+## History and recovery
 
 ```sh
-git2jira config set jira.mode manual          # or: mcp, api-token
-git2jira config set jira.site https://example.atlassian.net   # optional for manual mode
+git2jira status                   # what the next report would contain (read-only)
+git2jira history                  # confirmed reports (cross-checked with Jira in API-token mode)
+git2jira report pending           # unfinished reports
+git2jira report recover           # settle interrupted local operations
+git2jira recover                  # API-token mode: interrupted publications
 ```
-
-Git2Jira never switches modes on its own: if MCP is unavailable, it stops and offers manual mode.
-
-### Manual mode
-
-```sh
-git2jira report                               # analyze, write, preview; then copy / save / confirm
-git2jira report --language uk                 # Ukrainian report
-git2jira report --dry-run                     # preview only: nothing saved, no checkpoint moved
-git2jira report --test-command "pnpm test"    # run tests and cite the verified result
-git2jira report pending                       # unfinished reports; "git2jira report" resumes one
-```
-
-Step by step (what the Skill uses): `report prepare --json` → write the JSON → `report submit --report
-<id> --input report.json` → `report copy` / `export` → paste into Jira → `report confirm --report <id>
---digest <sha256>`.
-
-`report pending`, `report cancel`, `report recover`, and `report revoke` (withdraw a confirmation made by
-mistake) manage unfinished reports. Copying or exporting never moves the checkpoint; only `confirm` does,
-and it is recorded as **user-attested**: Git2Jira has not seen the comment in Jira. Changes you make after
-the report was prepared stay for the next report.
-
-In a terminal the report is written by Claude Code in non-interactive mode with your own Claude sign-in;
-Git2Jira stops instead of using API-key billing unless you pass `--allow-api-billing`. Inside Claude Code
-the current session writes it; no second Claude Code is started. Every report is checked against Git: it
-cannot name files outside the change set, and it cannot claim tests, deployments, or approvals that did
-not happen. See [docs/ai-reporting.md](docs/ai-reporting.md).
-
-### Atlassian MCP mode
-
-```sh
-git2jira mcp setup        # registers https://mcp.atlassian.com/v2/mcp in Claude Code (user scope)
-# in Claude Code: /mcp → select the Atlassian server → Authenticate (browser)
-git2jira mcp status       # registration and the last access check
-```
-
-The OAuth sign-in belongs to Claude Code; Git2Jira never sees or copies it, and cannot tell from the
-outside whether it succeeded. Access is verified only by read-only tool calls made inside Claude Code
-(`git2jira mcp verify`). If your organization blocks Rovo MCP or its write tools, use manual mode. The
-MCP workflow is driven by the `/jira-report` Skill; see [docs/skill.md](docs/skill.md#mcp-mode) and
-[docs/jira-publication.md](docs/jira-publication.md#mcp-mode).
-
-## Connect to Jira with an API token (optional)
-
-Create an API token at <https://id.atlassian.com/manage-profile/security/api-tokens>, then:
-
-```sh
-git2jira login                       # asks for site, email, and token (the token is masked)
-git2jira connections --check         # verify the stored credentials (read-only)
-git2jira status --jira               # also check the issue exists and show its title
-git2jira logout                      # remove the token from the credential store
-```
-
-The token is checked against Jira before it is stored, and only ever stored in the OS credential store.
-Classic and scoped API tokens both work. Several sites or accounts can be configured as named connections
-(`--connection`); see [docs/authentication.md](docs/authentication.md).
-
-## Preview the next report
-
-```sh
-git2jira status                       # issue from the branch name
-git2jira status --issue LSND-1234     # explicit issue
-git2jira status --base develop        # explicit base for the first report
-git2jira status --json
-```
-
-`status` is read-only: it does not change your files, index, HEAD, or refs.
 
 ## Commands
 
-| Command       | Purpose                                                      | Available |
-| ------------- | ------------------------------------------------------------ | --------- |
-| `config`      | Read and change settings                                     | Now       |
-| `init`        | Interactive setup                                            | Phase 5   |
-| `doctor`      | Diagnose the installation                                    | Phase 5   |
-| `login`       | Connect to Jira (API token in the OS credential store)       | Now       |
-| `logout`      | Remove Jira credentials                                      | Now       |
-| `connections` | List Jira connections and check their credentials            | Now       |
-| `status`      | Preview the issue, baseline, and changes for the next report | Now       |
-| `report`      | Write, preview, and deliver the next report (all modes)      | Now       |
-| `report …`    | Prepare, submit, copy, confirm, publish (manual and MCP)     | Now       |
-| `mcp`         | Register and check the Atlassian MCP connection              | Now       |
-| `skill`       | Install, upgrade, check, and remove `/jira-report`           | Now       |
-| `history`     | List published reports, cross-checked with Jira              | Now       |
-| `recover`     | Repair interrupted publications and lost checkpoints         | Now       |
-| `uninstall`   | Remove the Skill, credentials, and configuration             | Phase 5   |
+| Command       | Purpose                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------- |
+| `init`        | Setup wizard                                                                            |
+| `doctor`      | Diagnose the installation (`--json`)                                                    |
+| `config`      | `list`, `get`, `set`, `unset`, `path`                                                   |
+| `status`      | Preview the issue, baseline, and changes for the next report                            |
+| `report`      | Write, preview, and deliver the next report (`--dry-run`, `--mode`, `--language`, …)    |
+| `report …`    | `prepare`, `submit`, `show`, `copy`, `export`, `open`, `confirm`, `publish`, `receipt`… |
+| `skill`       | `install`, `status`, `verify`, `uninstall` for `/jira-report`                           |
+| `mcp`         | `setup`, `status`, `verify` for the Atlassian MCP connection                            |
+| `login`       | API-token mode: connect a Jira site                                                     |
+| `logout`      | Remove a stored API token                                                               |
+| `connections` | List Jira connections and check their tokens                                            |
+| `history`     | List confirmed reports                                                                  |
+| `recover`     | Repair interrupted API-token publications                                               |
+| `uninstall`   | Remove `/jira-report`, stored tokens, and the global configuration                      |
 
-Commands that are not available yet exit with code 3 and say which phase delivers them.
+## Upgrade and uninstall
+
+```sh
+npm install -g git2jira-ai@latest     # once published; or a newer tarball
+git2jira skill install                # upgrades /jira-report in place; keeps files you added
+git2jira doctor
+
+git2jira uninstall                    # /jira-report, API tokens, global configuration
+npm uninstall -g git2jira-ai
+```
+
+`uninstall` never removes MCP servers from Claude Code (it prints the `claude mcp remove` command) and
+does not touch repositories: report history stays in `.git/git2jira/` and `refs/git2jira/` there.
 
 ## Security
 
-- Nothing is posted to Jira without your explicit approval of the exact previewed text, and a
-  checkpoint never moves because a report was merely generated, shown, or copied.
-- A comment request whose outcome is unknown is never repeated blindly; it is looked up in Jira first.
-  (Jira offers no idempotency key, so exactly-once delivery cannot be guaranteed; see
-  [docs/jira-publication.md](docs/jira-publication.md).)
-- Jira credentials never reach Claude, logs, configuration files, or your repository.
+- Nothing is posted to Jira without your explicit approval of the exact report, and the Skill cannot
+  approve for you: confirmations and publications always go through Claude Code's permission prompt.
+- A checkpoint never moves because a report was generated, shown, or copied.
+- Jira credentials never reach Claude, logs, configuration files, or repositories. OAuth for MCP stays
+  inside Claude Code.
 - Your working files and Git index are never modified during analysis.
-- Source code, diffs, and Jira text are treated as untrusted data, never as instructions.
+- Source code, diffs, and Jira text are untrusted data, never instructions.
+- `git2jira skill verify` warns about Claude Code permission rules that would skip approval prompts.
 
 Details: [docs/security.md](docs/security.md).
 
@@ -212,13 +312,16 @@ Details: [docs/security.md](docs/security.md).
 
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
+- [Installation and setup](docs/installation.md)
+- [The /jira-report Skill](docs/skill.md) and
+  [manual verification in Claude Code](docs/skill-verification.md)
 - [Git snapshots and incremental diffs](docs/git-snapshots.md)
 - [Jira publication](docs/jira-publication.md)
-- [The /jira-report Skill](docs/skill.md) and [manual verification in Claude Code](docs/skill-verification.md)
+- [AI reporting](docs/ai-reporting.md)
 - [Authentication](docs/authentication.md)
 - [Localization](docs/localization.md)
 - [Security](docs/security.md)
-- [Development](docs/development.md)
+- [Development and releases](docs/development.md)
 - [Roadmap](docs/roadmap.md)
 
 ## License

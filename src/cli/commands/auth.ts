@@ -43,9 +43,24 @@ export function createLoginCommand(ctx: CliContext): Command {
     )
     .option('--project <keys...>', 'route issues of these projects to this connection')
     .option('--default', 'make this the default connection')
+    .addHelpText(
+      'after',
+      '\nAtlassian MCP and manual modes need no "git2jira login". MCP is authorized with OAuth inside\n' +
+        'Claude Code: run /mcp, select the Atlassian server, and choose Authenticate.',
+    )
     .action(async (options: LoginOptions) => {
       const configStore = ctx.container.resolve('configStore');
       const global = await configStore.readGlobal();
+      if (global.jira?.mode !== 'api-token') {
+        println(
+          ctx.stderr,
+          `Note: Jira mode is "${global.jira?.mode ?? 'manual'}". ` +
+            (global.jira?.mode === 'mcp'
+              ? 'Atlassian MCP is authorized with OAuth in Claude Code (/mcp → Authenticate), not with "git2jira login". '
+              : 'Manual mode needs no Jira sign-in. ') +
+            '"git2jira login" sets up the optional personal API-token mode.',
+        );
+      }
       const name = options.connection ?? global.jira?.defaultConnection ?? 'default';
       if (!ConnectionNameSchema.safeParse(name).success) {
         throw new UsageError(

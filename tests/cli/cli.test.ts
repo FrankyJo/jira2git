@@ -1,7 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PLANNED_COMMANDS } from '../../src/cli/commands/planned';
 import { ExitCode } from '../../src/core/errors';
 import { createCliHarness } from '../helpers';
 
@@ -39,15 +38,6 @@ describe('git2jira CLI', () => {
 
   it('rejects unknown commands with a usage error', async () => {
     expect((await h.run(['publish-everything'])).exitCode).toBe(ExitCode.Usage);
-  });
-
-  describe.each(PLANNED_COMMANDS)('planned command "$name"', ({ name, phase }) => {
-    it(`fails honestly and points to Phase ${phase}`, async () => {
-      const { exitCode, stdout, stderr } = await h.run([name]);
-      expect(exitCode).toBe(ExitCode.NotImplemented);
-      expect(stdout).toBe('');
-      expect(stderr).toContain(`Phase ${phase}`);
-    });
   });
 
   it('validates report --language, and keeps end-to-end "report" for Phase 3', async () => {
@@ -90,6 +80,9 @@ describe('git2jira CLI', () => {
       const { stdout } = await h.run(['config', 'list', '--json']);
       expect(JSON.parse(stdout)).toEqual([
         { key: 'report.language', value: 'en', source: 'default' },
+        { key: 'report.includeUncommitted', value: true, source: 'default' },
+        { key: 'report.testCommand', value: null, source: 'default' },
+        { key: 'jira.openAfterPublish', value: false, source: 'default' },
         { key: 'base.branch', value: null, source: 'default' },
         { key: 'jira.mode', value: 'manual', source: 'default' },
         { key: 'jira.site', value: null, source: 'default' },

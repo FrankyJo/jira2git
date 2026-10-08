@@ -47,7 +47,7 @@ export class NestedClaudeCodeError extends Git2JiraError {
 }
 
 /** `claude auth status --json`: only the fields needed to decide billing. */
-const AuthStatusSchema = z.looseObject({
+export const AuthStatusSchema = z.looseObject({
   loggedIn: z.boolean(),
   authMethod: z.string().optional(),
   apiProvider: z.string().optional(),
@@ -65,7 +65,12 @@ const ResultEnvelopeSchema = z.looseObject({
 });
 
 /** Sign-in methods that use the user's Claude subscription. */
-const SUBSCRIPTION_METHODS = new Set(['claude.ai', 'oauth', 'oauth_token', 'subscription']);
+export const SUBSCRIPTION_METHODS: ReadonlySet<string> = new Set([
+  'claude.ai',
+  'oauth',
+  'oauth_token',
+  'subscription',
+]);
 
 export interface HeadlessOptions {
   executable?: string;

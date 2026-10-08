@@ -13,6 +13,7 @@ allowed-tools:
   - Bash(git2jira report copy *)
   - Bash(git2jira report export *)
   - Bash(git2jira report receipt *)
+  - Bash(git2jira report open *)
   - Bash(git2jira mcp status *)
   - Bash(git2jira mcp verify *)
   - mcp__atlassian__getAccessibleAtlassianResources
@@ -86,7 +87,9 @@ git2jira skill context --json --args '$ARGUMENTS'
 
 The output gives the repository, branch, issue key, resolved `mode` and `language` (with their
 source: an explicit argument wins over configuration), the Jira `site`, the last confirmed
-`checkpoint`, `pending` reports for this issue, MCP tool names, and `heredocDelimiter`.
+`checkpoint`, `pending` reports for this issue, `preferences`, MCP tool names, and `heredocDelimiter`.
+If `preferences.includeUncommitted` is false, tell the user that uncommitted changes are left out of
+this report (`git2jira config set report.includeUncommitted true` changes that).
 
 ### 2. Pending report
 

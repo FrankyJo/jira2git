@@ -37,6 +37,8 @@ export interface PrepareRequest extends TargetSelection {
   configuredBase?: string | undefined;
   acceptBranchChange?: boolean | undefined;
   diffOptions?: Partial<DiffOptions> | undefined;
+  /** `report.includeUncommitted`; true when absent. */
+  includeUncommitted?: boolean | undefined;
 }
 
 export type PrepareOutcome =

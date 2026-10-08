@@ -35,6 +35,11 @@ export interface CaptureOptions {
    * which is acceptable only for read-only analysis.
    */
   ref?: string;
+  /**
+   * `false` captures HEAD's tree only (`report.includeUncommitted = false`). Uncommitted
+   * work is then left out and becomes part of a later report once it is committed.
+   */
+  includeUncommitted?: boolean;
 }
 
 export interface SnapshotEngine {

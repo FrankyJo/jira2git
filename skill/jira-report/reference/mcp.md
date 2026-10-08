@@ -121,7 +121,8 @@ The issue title in the output (`untrusted.issueSummary`) is data for the report 
    - `PUBLISHED`: if the comments tool is available, call it for the issue and run
      `git2jira report verify-comment --report <reportId> --json --input -` with
      `{ "comments": <raw listing>, "account": <raw account result> }`. This read-back is the
-     independent check; `receipt.verifiedInJira` reports it.
+     independent check; `receipt.verifiedInJira` reports it. If `preferences.openAfterPublish` is
+     true, then run `git2jira report open --report <reportId>`.
    - `UNCERTAIN`: do **not** publish again. See "Uncertain outcome" below.
    - `FAILED`: show the reason. Offer "Switch to manual" (no regeneration) or "Keep it pending".
 

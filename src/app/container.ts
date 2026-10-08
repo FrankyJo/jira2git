@@ -6,6 +6,7 @@ import type { BaseBranchResolver } from '../git/base';
 import type { ConfigStore } from '../config/store';
 import type { PathEnvironment } from '../config/paths';
 import type { CredentialStore } from '../credentials/types';
+import type { EnvironmentProbe } from '../diagnostics/environment';
 import type { DiagnosticsRunner } from '../diagnostics/types';
 import type { DraftStore } from '../delivery/draft';
 import type { ReportDeliveryService } from '../delivery/service';
@@ -52,6 +53,7 @@ export interface ServiceRegistry {
   claudeMcpRegistry: ClaudeMcpRegistry;
   mcpVerificationStore: McpVerificationStore;
   skillInstaller: SkillInstaller;
+  environmentProbe: EnvironmentProbe;
   diagnostics: DiagnosticsRunner;
 }
 
@@ -84,6 +86,7 @@ export const SERVICE_PHASES: Readonly<Record<ServiceName, Phase>> = {
   mcpVerificationStore: 2,
   reportGenerator: 3,
   skillInstaller: 4,
+  environmentProbe: 5,
   diagnostics: 5,
 };
 

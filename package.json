@@ -1,6 +1,6 @@
 {
   "name": "git2jira-ai",
-  "version": "0.0.0",
+  "version": "0.5.0",
   "description": "Turn Git changes into incremental, professional Jira implementation reports using Claude Code.",
   "keywords": [
     "jira",
@@ -13,9 +13,18 @@
   ],
   "license": "MIT",
   "author": "popov.de",
+  "homepage": "https://github.com/FrankyJo/jira2git#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FrankyJo/jira2git.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FrankyJo/jira2git/issues"
+  },
   "type": "module",
   "bin": {
-    "git2jira": "./dist/cli.js"
+    "git2jira": "./dist/cli.js",
+    "git2jira-ai": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -38,7 +47,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "prepublishOnly": "pnpm check"
+    "prepublishOnly": "pnpm check",
+    "prepack": "pnpm build",
+    "test:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
@@ -62,5 +73,9 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

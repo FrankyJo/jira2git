@@ -1,3 +1,4 @@
+import { arch, release } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GitRefs } from '../checkpoints/refs';
@@ -32,6 +33,8 @@ import { McpVerificationStore } from '../mcp/setup';
 import { ClaudeCodeHeadlessProvider } from '../ai/claude-headless';
 import { ReportEngine } from '../ai/engine';
 import { VERSION } from '../core/version';
+import { SequentialDiagnosticsRunner } from '../diagnostics/checks';
+import { EnvironmentProbe } from '../diagnostics/environment';
 import { FileSkillInstaller } from '../skill/installer';
 import { SkillPackageError, findSkillAssets, loadSkillPackage } from '../skill/package';
 import { ServiceContainer } from './container';
@@ -153,5 +156,20 @@ export function createDefaultContainer(): ServiceContainer {
             return loadSkillPackage(assets, VERSION);
           },
         }),
-    );
+    )
+    .register(
+      'environmentProbe',
+      (c) =>
+        new EnvironmentProbe({
+          runner: c.resolve('processRunner'),
+          env: c.resolve('pathEnvironment').env,
+          platform: c.resolve('pathEnvironment').platform,
+          release: release(),
+          arch: arch(),
+          nodeVersion: process.version,
+          cliVersion: VERSION,
+          scriptPath: process.argv[1],
+        }),
+    )
+    .register('diagnostics', () => new SequentialDiagnosticsRunner());
 }

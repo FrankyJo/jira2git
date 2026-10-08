@@ -28,7 +28,7 @@ git2jira config set report.language en --repo
 git2jira config unset report.language --repo
 ```
 
-The setup wizard (`git2jira init`, Phase 5) asks for the preferred language and stores it globally.
+The setup wizard (`git2jira init`) asks "Which language should Git2Jira AI use for Jira reports?" (English by default, or Ukrainian) and stores the answer globally as `report.language`.
 
 ## What gets localized
 

@@ -20,6 +20,7 @@ export const PREAPPROVABLE_SUBCOMMANDS = [
   'report copy',
   'report export',
   'report receipt',
+  'report open',
   'mcp status',
   'mcp verify',
 ] as const;

@@ -8,6 +8,7 @@ import {
   DELIVERY_MODES,
   DeliveryModeSchema,
   McpServerNameSchema,
+  TestCommandSchema,
   type ConfigScope,
   type GlobalConfig,
   type RepoConfig,
@@ -189,8 +190,87 @@ const defaultConnection: ConfigKeyDefinition = {
   },
 };
 
+function parseBoolean(key: string, raw: string): boolean {
+  const value = raw.trim().toLowerCase();
+  if (['true', 'yes', 'on', '1'].includes(value)) return true;
+  if (['false', 'no', 'off', '0'].includes(value)) return false;
+  throw new UsageError(`Invalid value "${raw}" for ${key}: expected true or false.`);
+}
+
+const includeUncommitted: ConfigKeyDefinition = {
+  description: 'Include uncommitted working-tree changes in reports (true or false; default true).',
+  scopes: ['global', 'repository'],
+  parse: (raw) => parseBoolean('report.includeUncommitted', raw),
+  get: (config) => config.report?.includeUncommitted,
+  resolve: (repo, global) =>
+    repo?.report?.includeUncommitted !== undefined
+      ? { value: repo.report.includeUncommitted, source: 'repository' }
+      : global.report?.includeUncommitted !== undefined
+        ? { value: global.report.includeUncommitted, source: 'global' }
+        : { value: true, source: 'default' },
+  set: (config, value) => ({
+    ...config,
+    report: { ...config.report, includeUncommitted: z.boolean().parse(value) },
+  }),
+  unset: (config) => {
+    const { includeUncommitted: _removed, ...rest } = config.report ?? {};
+    return { ...config, report: rest };
+  },
+};
+
+const testCommand: ConfigKeyDefinition = {
+  description:
+    'Test command "git2jira report" runs (no shell) when --test-command is not given (global only).',
+  scopes: ['global'],
+  parse(raw) {
+    const result = TestCommandSchema.safeParse(raw);
+    if (!result.success) {
+      throw new UsageError(
+        `Invalid value for report.testCommand: ${result.error.issues[0]?.message ?? 'invalid'}`,
+      );
+    }
+    return result.data;
+  },
+  get: (config) => (config as GlobalConfig).report?.testCommand,
+  resolve: (_repo, global) =>
+    global.report?.testCommand !== undefined
+      ? { value: global.report.testCommand, source: 'global' }
+      : { value: undefined, source: 'default' },
+  set: (config, value) => ({
+    ...config,
+    report: { ...config.report, testCommand: TestCommandSchema.parse(value) },
+  }),
+  unset: (config) => {
+    const { testCommand: _removed, ...rest } = (config as GlobalConfig).report ?? {};
+    return { ...config, report: rest };
+  },
+};
+
+const openAfterPublish: ConfigKeyDefinition = {
+  description:
+    'Open the Jira comment in the browser after publication (true or false; global only).',
+  scopes: ['global'],
+  parse: (raw) => parseBoolean('jira.openAfterPublish', raw),
+  get: (config) => (config as GlobalConfig).jira?.openAfterPublish,
+  resolve: (_repo, global) =>
+    global.jira?.openAfterPublish !== undefined
+      ? { value: global.jira.openAfterPublish, source: 'global' }
+      : { value: false, source: 'default' },
+  set: (config, value) => ({
+    ...config,
+    jira: { ...config.jira, openAfterPublish: z.boolean().parse(value) },
+  }),
+  unset: (config) => {
+    const { openAfterPublish: _removed, ...rest } = (config as GlobalConfig).jira ?? {};
+    return { ...config, jira: rest };
+  },
+};
+
 export const CONFIG_KEYS = {
   'report.language': reportLanguage,
+  'report.includeUncommitted': includeUncommitted,
+  'report.testCommand': testCommand,
+  'jira.openAfterPublish': openAfterPublish,
   'base.branch': baseBranch,
   'jira.mode': jiraMode,
   'jira.site': jiraSite,

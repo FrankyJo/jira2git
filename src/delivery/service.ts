@@ -78,6 +78,8 @@ export interface DraftPrepareRequest {
   language: Language;
   site: JiraSite;
   siteIsPlaceholder: boolean;
+  /** `report.includeUncommitted`; true when absent. */
+  includeUncommitted?: boolean | undefined;
   userContext?: string | undefined;
   /** Jira issue details, if the user or the session has them. Optional in every mode. */
   issueContext?: { title?: string | undefined; description?: string | undefined } | undefined;

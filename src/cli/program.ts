@@ -4,8 +4,8 @@ import { createConnectionsCommand, createLoginCommand, createLogoutCommand } fro
 import { createConfigCommand } from './commands/config';
 import { createHistoryCommand, createRecoverCommand } from './commands/history';
 import { createMcpCommand } from './commands/mcp';
-import { PLANNED_COMMANDS, createPlannedCommand } from './commands/planned';
 import { createReportCommand } from './commands/report';
+import { createDoctorCommand, createInitCommand, createUninstallCommand } from './commands/setup';
 import { createSkillCommand } from './commands/skill';
 import { createStatusCommand } from './commands/status';
 import type { CliContext } from './context';
@@ -34,7 +34,9 @@ export function createProgram(ctx: CliContext): Command {
   program.addCommand(createReportCommand(ctx));
   program.addCommand(createMcpCommand(ctx));
   program.addCommand(createSkillCommand(ctx));
-  for (const spec of PLANNED_COMMANDS) program.addCommand(createPlannedCommand(spec));
+  program.addCommand(createInitCommand(ctx));
+  program.addCommand(createDoctorCommand(ctx));
+  program.addCommand(createUninstallCommand(ctx));
 
   // Apply the same output and exit behaviour to every subcommand.
   const propagate = (command: Command): void => {

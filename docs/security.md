@@ -68,7 +68,14 @@
     asks for publication with `AskUserQuestion`, and every confirmation, publication, result recording,
     or fallback goes through Claude Code's permission prompt. Publication receipts are derived from CLI
     state and never accepted as input. See [skill.md](skill.md).
-18. **Model output is checked against Git.** Reports naming files outside the change set, another issue,
+18. **Repositories cannot choose commands to run.** `report.testCommand` exists only in the global
+    configuration, never in `.git2jira.json`, and runs without a shell; repository files cannot make
+    Git2Jira execute anything.
+19. **Setup is consent-based.** `git2jira init` changes nothing before the summary is confirmed,
+    registers an MCP server only after consent and never edits existing ones, never signs in to Claude
+    Code or Atlassian on the user's behalf, and reads Claude Code's state only through
+    `claude --version`, `claude auth status --json`, and `claude mcp list`.
+20. **Model output is checked against Git.** Reports naming files outside the change set, another issue,
     language, or snapshot, or claiming tests, deployments, or approvals without evidence are rejected.
 
 ## File permissions

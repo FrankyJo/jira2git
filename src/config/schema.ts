@@ -14,9 +14,28 @@ export const DeliveryModeSchema = z.enum(DELIVERY_MODES);
 
 export const CONFIG_SCHEMA_VERSION = 1;
 
+/** A test command run without a shell, e.g. `pnpm test`. Arguments are split on spaces. */
+export const TestCommandSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine((v) => !/[;&|`$<>\n\r]/.test(v), {
+    message: 'Test commands run without a shell: no ; & | ` $ < > or line breaks.',
+  });
+
 const ReportSettingsSchema = z.strictObject({
   language: LanguageSchema.optional(),
+  /** Include uncommitted working-tree changes in the snapshot (default true). */
+  includeUncommitted: z.boolean().optional(),
+  /**
+   * Test command `git2jira report` runs and cites when none is given. Global only: a
+   * repository file must never be able to choose a command that Git2Jira executes.
+   */
+  testCommand: TestCommandSchema.optional(),
 });
+
+const RepoReportSettingsSchema = ReportSettingsSchema.omit({ testCommand: true });
 
 /** Jira project key, e.g. `LSND`. Matches Jira's default project key rules. */
 export const ProjectKeySchema = z.string().regex(/^[A-Z][A-Z0-9_]{1,9}$/, {
@@ -51,6 +70,8 @@ const JiraSettingsSchema = z.strictObject({
   site: z.url({ protocol: /^https$/ }).optional(),
   defaultConnection: ConnectionNameSchema.optional(),
   connections: z.record(ConnectionNameSchema, JiraConnectionSchema).optional(),
+  /** Open the Jira comment in the browser after a publication (default false). */
+  openAfterPublish: z.boolean().optional(),
 });
 
 /** Repository-level Jira preference; safe to commit because it names a site, not an account. */
@@ -99,7 +120,7 @@ const BaseSettingsSchema = z.strictObject({
 /** Repository config is safe to commit: it must never contain secrets. */
 export const RepoConfigSchema = z.strictObject({
   version: z.literal(CONFIG_SCHEMA_VERSION).optional(),
-  report: ReportSettingsSchema.optional(),
+  report: RepoReportSettingsSchema.optional(),
   issue: IssueSettingsSchema.optional(),
   base: BaseSettingsSchema.optional(),
   jira: RepoJiraSettingsSchema.optional(),

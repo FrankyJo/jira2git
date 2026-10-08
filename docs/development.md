@@ -39,7 +39,13 @@ src/
   credentials/    OS credential store adapters (macOS, Linux, Windows)
   jira/           auth (API token, OAuth interfaces), REST client, connections
   adf/            report renderer, validation, footer marker
-  report/ ai/ skill/ installer/ diagnostics/   interfaces for later phases
+  report/ ai/     structured report schema and validation; AI analysis and writers
+  delivery/ mcp/  manual and MCP drafts, receipts, Atlassian MCP bridge and setup
+  skill/          /jira-report arguments, package checks, approval boundary, installer
+  installer/      Prompter port, @clack/prompts adapter, init wizard
+  diagnostics/    environment probe and doctor checks
+skill/            the /jira-report package shipped in the npm tarball
+scripts/          verify-package.mjs (tarball installation test)
 tests/            Vitest suites mirroring src/
   fixtures/       GitRepo (real temporary repositories), MockJira (local mock Jira server),
                   publication harness
@@ -55,7 +61,8 @@ docs/             product and design documentation
 - Validate every external input with Zod.
 - Commands write through the injected `stdout`/`stderr` streams and return exit codes; they never call
   `process.exit`.
-- Unimplemented behavior throws `NotImplementedError(feature, phase)`.
+- Unimplemented behavior throws `NotImplementedError(feature, phase)`. Since Phase 5 every command is
+  implemented.
 - Child processes: `execFile`/`spawn` with argument arrays only.
 
 ## Git integration tests
@@ -92,7 +99,27 @@ GIT2JIRA_TEST_KEYCHAIN=1 pnpm test tests/credentials
 Add a `ConfigKeyDefinition` to `CONFIG_KEYS` (`src/config/keys.ts`) and the field to the schema in
 `src/config/schema.ts`. `config get|set|unset|list` pick it up automatically.
 
-## Releasing
+## Releases
 
-Packaging and npm publication are Phase 5; release preparation is Phase 6.
-`pnpm pack --dry-run` shows the files that would be published (`dist`, `README.md`, `LICENSE`).
+```sh
+pnpm pack                  # builds (prepack) and writes git2jira-ai-<version>.tgz
+pnpm test:package          # packs, installs the tarball into a clean temp directory outside the
+                           # repository, and runs the installed CLI there (needs network for deps)
+GIT2JIRA_PACKAGE_TEST=1 pnpm test tests/package   # the same, from Vitest
+KEEP_PACKAGE_TEST=1 pnpm test:package              # keep the temp directory for inspection
+```
+
+The tarball contains `dist/`, `skill/`, `README.md`, `LICENSE`, and `package.json` only.
+
+`.github/workflows/release.yml`:
+
+1. On a `v*.*.*` tag: `pnpm check`, tag must equal `package.json` `version`, `pnpm pack`, the tarball
+   test, then a **draft** GitHub release with the tarball attached.
+2. npm publication is a separate job that runs only when the workflow is started by hand with
+   `publish: true`, in the `npm` environment (configure required reviewers there), with
+   `npm publish --provenance --access public` and the `NPM_TOKEN` secret. Nothing is published
+   automatically.
+
+Before the first publication: check that `git2jira-ai` is still free (`npm view git2jira-ai`), bump the
+version, update the changelog in the release notes, and run the manual checks in
+[skill-verification.md](skill-verification.md). Versions follow semantic versioning; 1.0.0 is Phase 6.

@@ -15,6 +15,7 @@ import { buildSessionRequest } from '../../ai/prompt';
 import { runTestCommand } from '../../ai/test-runner';
 import type { GenerationResult, ReportGenerator } from '../../ai/types';
 import { Git2JiraError, UsageError } from '../../core/errors';
+import { openInBrowser } from '../../delivery/browser';
 import { copyToClipboard } from '../../delivery/clipboard';
 import type { Draft, ManualDraft } from '../../delivery/draft';
 import { resolveDeliveryMode, type DeliveryMode } from '../../delivery/mode';
@@ -27,6 +28,7 @@ import type { StoredPlan } from '../../publication/plan';
 import type { ReviewContext } from '../../publication/service';
 import { renderPreview } from '../../report/preview';
 import { println, type CliContext } from '../context';
+import { includeUncommittedSetting, testCommandsSetting } from '../../config/settings';
 import { configs, draftSummary, nextSteps, readJson } from './report';
 
 export interface ReportRunOptions {
@@ -102,7 +104,10 @@ export async function runReport(ctx: CliContext, options: ReportRunOptions): Pro
     historySites: identity.historySites,
   });
   const issueContext = await readIssueContext(ctx, options);
-  const tests = await collectTests(ctx, options);
+  const tests = await collectTests(ctx, {
+    ...options,
+    testCommand: testCommandsSetting(options.testCommand, globalConfig),
+  });
 
   if (options.dryRun) {
     await dryRun(ctx, options, {
@@ -115,6 +120,7 @@ export async function runReport(ctx: CliContext, options: ReportRunOptions): Pro
       tests,
       projectKeys: repoConfig.issue?.projectKeys,
       configuredBase: repoConfig.base?.branch,
+      includeUncommitted: includeUncommittedSetting(repoConfig, globalConfig),
     });
     return;
   }
@@ -131,6 +137,7 @@ export async function runReport(ctx: CliContext, options: ReportRunOptions): Pro
     language,
     site: resolved.site,
     siteIsPlaceholder: resolved.placeholder,
+    includeUncommitted: includeUncommittedSetting(repoConfig, globalConfig),
     userContext: options.context,
     issueContext,
     tests,
@@ -435,6 +442,7 @@ async function dryRun(
     tests: TestEvidence[];
     projectKeys: readonly string[] | undefined;
     configuredBase: string | undefined;
+    includeUncommitted: boolean;
   },
 ): Promise<void> {
   const lifecycle = ctx.container.resolve('publicationLifecycle');
@@ -447,6 +455,7 @@ async function dryRun(
     site: input.site,
     acceptBranchChange: options.acceptBranchChange,
     diffOptions: reportDiffOptions(),
+    includeUncommitted: input.includeUncommitted,
   });
   if (!analysis.hasChanges) {
     println(ctx.stdout, 'No changes since the last confirmed report. Nothing to report.');
@@ -545,9 +554,12 @@ async function runApiToken(
   if (options.dryRun) {
     throw new UsageError('--dry-run is available for manual reports; use --mode manual --dry-run.');
   }
-  const { repoConfig } = await configs(ctx);
+  const { repoConfig, globalConfig } = await configs(ctx);
   const publication = ctx.container.resolve('publicationService');
-  const tests = await collectTests(ctx, options);
+  const tests = await collectTests(ctx, {
+    ...options,
+    testCommand: testCommandsSetting(options.testCommand, globalConfig),
+  });
   const outcome = await publication.prepare({
     cwd: ctx.cwd,
     issue: options.issue,
@@ -558,6 +570,7 @@ async function runApiToken(
     language,
     base: options.base,
     configuredBase: repoConfig.base?.branch,
+    includeUncommitted: includeUncommittedSetting(repoConfig, globalConfig),
     acceptBranchChange: options.acceptBranchChange,
   });
   if (outcome.status === 'no-changes') {
@@ -627,6 +640,9 @@ async function runApiToken(
         case 'RECOVERED':
           println(ctx.stdout, `Published report #${String(plan.sequence)}: ${result.commentUrl}`);
           if (result.warning) println(ctx.stdout, `Warning: ${result.warning}`);
+          if (globalConfig.jira?.openAfterPublish === true) {
+            await openInBrowser(ctx.container.resolve('processRunner'), result.commentUrl);
+          }
           return;
         case 'FAILED':
           throw new Git2JiraError(

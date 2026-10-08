@@ -11,6 +11,7 @@ confirmation as **user-attested**: nothing is verified in Jira.
 2. Offer the delivery helpers with `AskUserQuestion` (one question, these options):
    - "Copy to clipboard" → `git2jira report copy --report <reportId>`
    - "Save to a file" → `git2jira report export --report <reportId>` (prints the file path)
+   - "Open the Jira issue" (only when `site.url` is set) → `git2jira report open --report <reportId>`
    - "I'll copy it from the chat" → nothing to run
      If the clipboard is not available, the CLI says so; offer the file instead.
 

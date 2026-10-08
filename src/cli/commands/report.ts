@@ -3,11 +3,13 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { findRepositoryRoot } from '../../config/paths';
+import { includeUncommittedSetting } from '../../config/settings';
 import type { GlobalConfig, RepoConfig } from '../../config/schema';
 import { packageWarnings } from '../../ai/engine';
 import { buildSessionRequest } from '../../ai/prompt';
 import { Git2JiraError, UsageError } from '../../core/errors';
 import { terminalSafe, terminalSafeLine } from '../../core/sanitize';
+import { openInBrowser } from '../../delivery/browser';
 import { copyToClipboard } from '../../delivery/clipboard';
 import { isOpen, type Draft, type ManualDraft, type McpDraft } from '../../delivery/draft';
 import { DELIVERY_MODES, resolveDeliveryMode } from '../../delivery/mode';
@@ -148,6 +150,7 @@ export function createReportCommand(ctx: CliContext): Command {
         language,
         site: resolved.site,
         siteIsPlaceholder: resolved.placeholder,
+        includeUncommitted: includeUncommittedSetting(repoConfig, globalConfig),
         userContext: options.context,
         mcp,
       });
@@ -288,6 +291,34 @@ export function createReportCommand(ctx: CliContext): Command {
       };
       const requestFile = await writeRequestFile(repository, draft.reportId, payload);
       println(ctx.stdout, JSON.stringify({ ...payload, requestFile }, null, 2));
+    });
+
+  report
+    .command('open')
+    .description(
+      'Open the published comment (or the Jira issue, to paste a manual report) in the browser.',
+    )
+    .requiredOption('-r, --report <id>', 'report id')
+    .option('--print', 'print the URL instead of opening it')
+    .action(async (options: { report: string; print?: boolean }) => {
+      const draft = await service().get(ctx.cwd, options.report);
+      const url =
+        draft.mode === 'mcp' && draft.publication
+          ? draft.publication.commentUrl
+          : draft.siteIsPlaceholder
+            ? undefined
+            : `${draft.site.url}/browse/${draft.issueKey}`;
+      if (url === undefined) {
+        throw new UsageError(
+          'No Jira site is configured for this report, so there is nothing to open. Set one with "git2jira config set jira.site <url>".',
+        );
+      }
+      if (options.print) {
+        println(ctx.stdout, url);
+        return;
+      }
+      const opened = await openInBrowser(ctx.container.resolve('processRunner'), url);
+      println(ctx.stdout, opened ? `Opened ${url}` : `Could not open a browser. Open ${url}`);
     });
 
   report

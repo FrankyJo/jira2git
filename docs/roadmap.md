@@ -8,7 +8,7 @@
 | 2.5   | Manual reports and Atlassian MCP integration            | Done    |
 | 3     | AI reporting engine and multilingual reports            | Done    |
 | 4     | Claude Code Skill `/jira-report`                        | Done    |
-| 5     | Interactive installer, configuration, and npm packaging | Planned |
+| 5     | Interactive installer, configuration, and npm packaging | Done    |
 | 6     | Final QA, security audit, and release preparation       | Planned |
 
 ## Phase 0: Foundation (done)
@@ -102,11 +102,22 @@
 - Manual guide for real Claude Code and Atlassian MCP: [skill-verification.md](skill-verification.md).
 - See [skill.md](skill.md).
 
-## Phase 5: Installer and packaging
+## Phase 5: Installer and packaging (done)
 
-- `init` wizard running the Phase 2.5 steps (language, "How do you want to use Jira?": Atlassian MCP or
-  manual), then the Skill; `doctor`, `uninstall`.
-- npm package, provenance, install docs.
+- `git2jira init`: ask-then-apply wizard (welcome, environment check, Jira delivery mode with MCP and
+  manual first and API token optional, MCP registration through `claude mcp add`, report language,
+  additional settings, summary, `/jira-report` install, diagnostics, next steps); `--yes` for
+  non-interactive use; cancellation changes nothing.
+- `git2jira doctor`: CLI on PATH, Node.js, OS, Git, Claude Code and its sign-in (billing warning), Skill,
+  configuration, language, mode, credential store (API token), and MCP as four separate facts
+  (registered, authorized, read verified, write available).
+- `git2jira uninstall`: Skill, tokens, configuration; leaves MCP servers and repositories alone.
+- Settings `report.includeUncommitted` (snapshot of HEAD only when false), `report.testCommand` (global
+  only), `jira.openAfterPublish`; `report open`; `login` explains that MCP OAuth happens in Claude Code.
+- npm package `git2jira-ai` 0.5.0 (`git2jira` and `git2jira-ai` executables, Skill assets included),
+  `pnpm test:package` (tarball installed outside the repository), CI package job, release workflow
+  (draft GitHub release; npm publish only by hand, with provenance). Not published.
+- See [installation.md](installation.md).
 
 ## Phase 6: Release
 

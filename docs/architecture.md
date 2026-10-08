@@ -46,8 +46,8 @@ switches modes by itself. See [jira-publication.md](jira-publication.md#delivery
 | Report schema          | `src/report`       | Structured report v2, validation against Git's facts, terminal preview                  | 3       |
 | AI reporting           | `src/ai`           | Analysis package, redaction, prompts, `ReportEngine`, headless Claude Code provider     | 3       |
 | Claude Code Skill      | `src/skill`        | `/jira-report` arguments, package checks, approval boundary, installer                  | 4       |
-| Installer              | `src/installer`    | `Prompter` port, @clack/prompts adapter, language and Jira mode steps (2.5), wizard (5) | 2.5 / 5 |
-| Diagnostics            | `src/diagnostics`  | `doctor` checks                                                                         | 5       |
+| Installer              | `src/installer`    | `Prompter` port, @clack/prompts adapter, `init` wizard (ask, then apply)                | 2.5 / 5 |
+| Diagnostics            | `src/diagnostics`  | Environment probe (version and sign-in commands only), `doctor` checks                  | 5       |
 
 Dependency direction: `cli → app → (module interfaces) ← adapters`. Modules import each other's
 _types_ only. No module imports `src/cli`.

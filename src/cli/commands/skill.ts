@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { Command } from 'commander';
 import { latestCheckpoint } from '../../checkpoints/types';
+import { includeUncommittedSetting } from '../../config/settings';
 import { Git2JiraError, UsageError } from '../../core/errors';
 import { VERSION } from '../../core/version';
 import { isOpen } from '../../delivery/draft';
@@ -231,6 +232,10 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
     site: { url: site.url, placeholder: site.placeholder, source: site.source },
     checkpoint,
     pending,
+    preferences: {
+      includeUncommitted: includeUncommittedSetting(repoConfig, globalConfig),
+      openAfterPublish: globalConfig.jira?.openAfterPublish ?? false,
+    },
     mcp: {
       server,
       tools: Object.fromEntries(

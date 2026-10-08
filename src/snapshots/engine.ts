@@ -52,7 +52,10 @@ export class GitSnapshotEngine implements SnapshotEngine {
     );
 
     try {
-      const { tree, head } = await this.captureStableTree(repository, tempIndex);
+      const { tree, head } =
+        options.includeUncommitted === false
+          ? await this.committedTree(repository)
+          : await this.captureStableTree(repository, tempIndex);
       const capturedAt = this.now().toISOString();
       const commit = (
         await gitOutput(
@@ -100,6 +103,15 @@ export class GitSnapshotEngine implements SnapshotEngine {
       await rm(tempIndex, { force: true });
       await rm(`${tempIndex}.lock`, { force: true });
     }
+  }
+
+  /** HEAD's tree (or the empty tree on an unborn branch): committed work only. */
+  private async committedTree(
+    repository: RepositoryInfo,
+  ): Promise<{ tree: string; head: string | null }> {
+    const head = await this.head(repository);
+    const tree = head ? await this.treeOf(repository, head) : await emptyTree(this.git, repository);
+    return { tree, head };
   }
 
   /**

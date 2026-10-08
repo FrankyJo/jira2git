@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { jiraSiteFromUrl } from '../../checkpoints/site';
 import type { Baseline, JiraSite } from '../../checkpoints/types';
 import { findRepositoryRoot } from '../../config/paths';
+import { includeUncommittedSetting } from '../../config/settings';
 import { terminalSafeLine } from '../../core/sanitize';
 import type { JiraIssue } from '../../jira/client/types';
 import {
@@ -81,6 +82,7 @@ export function createStatusCommand(ctx: CliContext): Command {
         projectKeys: repoConfig.issue?.projectKeys,
         site,
         acceptBranchChange: options.acceptBranchChange,
+        includeUncommitted: includeUncommittedSetting(repoConfig, await configStore.readGlobal()),
       });
 
       let issue: JiraIssue | undefined;
