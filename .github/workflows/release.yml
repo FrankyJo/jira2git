@@ -84,4 +84,5 @@ jobs:
       - name: Publish with provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish out/*.tgz --provenance --access public
+        # "./" matters: npm reads "out/name.tgz" as the GitHub repository "out/name.tgz".
+        run: npm publish ./out/*.tgz --provenance --access public
