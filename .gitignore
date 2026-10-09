@@ -24,3 +24,6 @@ Thumbs.db
 # VS Code
 .vscode/*
 !.vscode/extensions.json
+
+# npm package archives (built with pnpm pack)
+*.tgz
