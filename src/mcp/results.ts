@@ -128,9 +128,11 @@ export interface CommentListing {
  * report in the listing proves nothing.
  */
 export function parseCommentListing(raw: unknown): CommentListing {
-  const value = unwrapToolResult(raw);
+  const value = commentPageOf(unwrapToolResult(raw));
   const pages =
-    Array.isArray(value) && value.every((v) => PageShape.safeParse(v).success) ? value : [value];
+    Array.isArray(value) && value.every((v) => PageShape.safeParse(commentPageOf(v)).success)
+      ? value.map(commentPageOf)
+      : [value];
   const comments = new Map<string, ParsedComment>();
   let unreadable = 0;
   let total: number | undefined;
@@ -156,6 +158,20 @@ export function parseCommentListing(raw: unknown): CommentListing {
   const complete =
     pagesOk && unreadable === 0 && (total !== undefined ? list.length >= total : sawLast);
   return { comments: list, complete, unreadable };
+}
+
+/**
+ * The Rovo MCP server has no comment-listing tool (seen 2026-10-09), so comments are read
+ * through the issue tool: a Jira issue carries them as `fields.comment`, a page with
+ * `comments` and `total`. An issue without that field stays an unreadable page, which makes
+ * the listing incomplete, never "absent".
+ */
+function commentPageOf(value: unknown): unknown {
+  const unwrapped = unwrapToolResult(value);
+  const issue = z
+    .looseObject({ fields: z.looseObject({ comment: z.looseObject({}) }) })
+    .safeParse(unwrapped);
+  return issue.success ? issue.data.fields.comment : unwrapped;
 }
 
 /** The issue a lookup returned: Jira's `{ id, key, fields: { summary } }`, possibly wrapped. */

@@ -104,6 +104,50 @@ describe('MCP access assessment', () => {
     ).toBe('no-jira-access');
   });
 
+  it('is ready with the real Rovo tool set, which has no comment-listing tool', () => {
+    const rovoTools = [
+      'mcp__atlassian__getAccessibleAtlassianResources',
+      'mcp__atlassian__atlassianUserInfo',
+      'mcp__atlassian__getJiraIssue',
+      'mcp__atlassian__createJiraIssue',
+      'mcp__atlassian__editJiraIssue',
+      'mcp__atlassian__transitionJiraIssue',
+      'mcp__atlassian__addOrEditJiraIssueComment',
+    ];
+    const assessed = assessMcpAccess(
+      probe({
+        tools: rovoTools,
+        probes: {
+          resources: { ok: true, result: ROVO_RESOURCES },
+          issue: {
+            ok: true,
+            result: { data: { id: '1', key: 'ABC-1', fields: { summary: 's' } } },
+          },
+        },
+      }),
+    );
+    expect(assessed.state).toBe('ready');
+    expect(assessed.publicationEnabled).toBe(true);
+    expect(assessed.messages.join(' ')).toMatch(/comments are read through getJiraIssue/);
+  });
+
+  it('reads comments from an issue result, complete only with a total', () => {
+    const page = { startAt: 0, maxResults: 50, total: 1, comments: [{ id: '5', body: 'hi' }] };
+    expect(
+      parseCommentListing({ data: { key: 'ABC-1', fields: { comment: page } } }),
+    ).toMatchObject({
+      complete: true,
+      comments: [{ id: '5', text: 'hi' }],
+    });
+    expect(
+      parseCommentListing({
+        key: 'ABC-1',
+        fields: { comment: { comments: [{ id: '5', body: 'hi' }] } },
+      }).complete,
+    ).toBe(false);
+    expect(parseCommentListing({ key: 'ABC-1', fields: { summary: 's' } }).complete).toBe(false);
+  });
+
   it('unwraps a {"data": …} envelope for the other result parsers too', () => {
     expect(
       parseIssueLookup({ data: { id: '10001', key: 'ABC-1', fields: { summary: 'Profile' } } }),

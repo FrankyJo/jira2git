@@ -111,6 +111,32 @@ describe('MCP reports', () => {
     expect(must(await h.journal(MCP_SITE)).records[0]?.state).toBe('publishing');
   });
 
+  // Regression: the real Rovo MCP server has no comment-listing tool (2026-10-09); the
+  // Skill reads comments through getJiraIssue, whose result carries them in fields.comment.
+  it('settles an ambiguous outcome from the comment field of an issue lookup', async () => {
+    await h.change();
+    const draft = await h.mcp();
+    const payload = await publish(draft);
+    expect(
+      (await record(draft.reportId, { outcome: 'tool-error', error: { message: 'timeout' } }))
+        .state,
+    ).toBe('UNCERTAIN');
+    const issueWith = (comments: unknown[]) => ({
+      data: { id: '10001', key: ISSUE, fields: { summary: 'x', comment: listing(comments) } },
+    });
+    // An issue without its comment field proves nothing: still uncertain, nothing re-sent.
+    const noField = await h.service.reconcileMcp(h.repo.root, draft.reportId, {
+      comments: { data: { id: '10001', key: ISSUE, fields: { summary: 'x' } } },
+      account: ACCOUNT,
+    });
+    expect(noField.state).toBe('UNCERTAIN');
+    const found = await h.service.reconcileMcp(h.repo.root, draft.reportId, {
+      comments: issueWith([createdComment('20077', payload.body.markdown)]),
+      account: ACCOUNT,
+    });
+    expect(found).toMatchObject({ state: 'RECOVERED', commentId: '20077' });
+  });
+
   it('treats an ambiguous outcome conservatively and settles it from a comment listing', async () => {
     await h.change();
     const draft = await h.mcp();

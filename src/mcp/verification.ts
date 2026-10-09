@@ -32,12 +32,12 @@ export interface McpAssessment {
   messages: string[];
 }
 
-const PUBLISH_NEEDS: readonly AtlassianCapability[] = [
-  'resources',
-  'issue',
-  'listComments',
-  'writeComment',
-];
+/**
+ * A comment-listing tool is not required: the Rovo MCP server offers none (seen 2026-10-09),
+ * and comments can be read through the issue tool (`fields.comment`). Without a readable
+ * listing an unclear publication simply stays UNCERTAIN; nothing is re-sent.
+ */
+const PUBLISH_NEEDS: readonly AtlassianCapability[] = ['resources', 'issue', 'writeComment'];
 
 export function assessMcpAccess(probe: McpProbe): McpAssessment {
   const tools: Partial<Record<AtlassianCapability, string>> = {};
@@ -136,6 +136,12 @@ export function assessMcpAccess(probe: McpProbe): McpAssessment {
     'Reading Jira through MCP works. Comment creation is available as a tool, but write ' +
       'permission is only confirmed when the first report is published.',
   );
+  if (!tools.listComments) {
+    messages.push(
+      `There is no ${ATLASSIAN_TOOLS.listComments} tool; comments are read through ` +
+        `${ATLASSIAN_TOOLS.issue} (its comment field) when a publication must be checked.`,
+    );
+  }
   return result('ready', sites);
 }
 
