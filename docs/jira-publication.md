@@ -303,13 +303,13 @@ calls MCP. The split:
 Names from Atlassian's supported-tools page (read 2026-10-08), in `src/mcp/tools.ts`. The page lists
 names and groups, not parameters or result shapes.
 
-| Capability          | Tool                              | Group      |
-| ------------------- | --------------------------------- | ---------- |
-| Sites and cloud ids | `getAccessibleAtlassianResources` | common     |
-| Signed-in account   | `atlassianUserInfo`               | common     |
-| Exact issue lookup  | `getJiraIssue`                    | read_jira  |
-| Existing comments   | `listJiraIssueComments`           | read_jira  |
-| New comment         | `addOrEditJiraIssueComment`       | write_jira |
+| Capability          | Tool                                                                     | Group      |
+| ------------------- | ------------------------------------------------------------------------ | ---------- |
+| Sites and cloud ids | `getAccessibleAtlassianResources`                                        | common     |
+| Signed-in account   | `atlassianUserInfo`                                                      | common     |
+| Exact issue lookup  | `getJiraIssue`                                                           | read_jira  |
+| Existing comments   | `listJiraIssueComments` (optional; absent on the real server, see below) | read_jira  |
+| New comment         | `addOrEditJiraIssueComment`                                              | write_jira |
 
 The Skill reports the tool names its session actually has; only those matching a documented name for
 the configured server (`mcp__<server>__<tool>`) are used. `addOrEditJiraIssueComment` can also edit; the
@@ -396,16 +396,18 @@ Uses only the documented `claude mcp` commands, never Claude Code's files or cre
 
 ### What has and has not been verified
 
-| Item                                                                    | Status                                                                                                       |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Tool names and groups                                                   | From Atlassian's documentation only                                                                          |
-| Tool parameters (e.g. comment body format: Markdown or ADF, `cloudId`)  | **Not verified**; the Skill must read the tool schema                                                        |
-| Result shapes (comment object, comment listing pagination, issue, user) | **Not verified**; parsers accept Jira REST shapes and treat anything else as unknown                         |
-| Whether the comment body keeps the marker line intact                   | **Not verified**                                                                                             |
-| Error format for 401/403/policy blocks                                  | **Not verified**; classified conservatively                                                                  |
-| `claude mcp add/list` behaviour                                         | Checked against Claude Code 2.1.294 (`list` output format, `get`); `add` exercised only with a mocked runner |
-| OAuth flow via `/mcp`                                                   | Documented by Atlassian; not exercised by Git2Jira                                                           |
-| CLI, state machines, checkpoints, recovery, parsing rules               | Unit and integration tests with mocked MCP results and a real Git repository                                 |
+| Item                                                                    | Status                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tool names and groups                                                   | Seen live 2026-10-09: 11 tools — getAccessibleAtlassianResources, atlassianUserInfo, getJiraIssue, createJiraIssue, editJiraIssue, transitionJiraIssue, addOrEditJiraIssueComment, and generic Discover / Execute Read-Only / Write / Destructive Atlassian Operation. **No listJiraIssueComments**: comments are read from getJiraIssue's `fields.comment` |
+| Sites result shape                                                      | Seen live: `{"data":{"resources":[{"cloudId","url","products":[{"id":"jira","access":"read-write"}]}]}}` (not the REST array); parsed since 0.9.2                                                                                                                                                                                                           |
+| Tool parameters (comment body format, `cloudId`)                        | A Markdown body was accepted by addOrEditJiraIssueComment on 2026-10-09; other parameters not checked                                                                                                                                                                                                                                                       |
+| Result shapes (comment object, comment listing pagination, issue, user) | `{"data": …}` envelope handled; the rest is parsed as Jira REST shapes, anything else counts as unknown                                                                                                                                                                                                                                                     |
+| Whether the comment body keeps the marker line intact                   | **Not verified**                                                                                                                                                                                                                                                                                                                                            |
+| Error format for 401/403/policy blocks                                  | **Not verified**; classified conservatively                                                                                                                                                                                                                                                                                                                 |
+| `claude mcp add/list` behaviour                                         | Checked against Claude Code 2.1.294 (`list` output format, `get`); `add` exercised only with a mocked runner                                                                                                                                                                                                                                                |
+| OAuth flow via `/mcp`                                                   | Worked on a corporate site on 2026-10-09 (Claude Code's flow; Git2Jira only reads the result)                                                                                                                                                                                                                                                               |
+| End-to-end publication                                                  | One real report published as a new comment on 2026-10-09. In that run the result was not recorded (state PUBLISHING); `/jira-report` settles such a report from the issue's comments                                                                                                                                                                        |
+| CLI, state machines, checkpoints, recovery, parsing rules               | Unit and integration tests with mocked MCP results and a real Git repository                                                                                                                                                                                                                                                                                |
 
 No automated test contacts Jira or an MCP server. All MCP tests (`tests/delivery/mcp.test.ts`,
 `tests/skill/workflow.test.ts`, `tests/e2e/scenarios.test.ts` F–I) use **simulated** tool results shaped

@@ -2,13 +2,10 @@
 
 Generate incremental, professional Jira implementation reports from your Git changes with Claude Code.
 
-> **Status: 0.9.1, release candidate.** Manual mode is ready for use. Atlassian
-> MCP mode is implemented and tested against simulated tools only: real OAuth authorization, Jira read
-> and write permissions, and Rovo MCP result formats have **not** been verified, so treat it as
-> experimental until [docs/skill-verification.md](docs/skill-verification.md) passes on your site. The
-> optional API-token mode is tested against a local mock of Jira. See
-> [docs/release-checklist.md](docs/release-checklist.md#readiness). The npm name `git2jira-ai` was free on
-> 2026-10-08 and must be checked again right before publishing.
+> **Status: 0.9.2, release candidate.** Manual mode is ready for use. Atlassian MCP mode has published
+> a report on a real corporate Jira Cloud site (2026-10-09) after two fixes for the real Rovo MCP server;
+> treat it as early: error formats and policy blocks are still unverified. The optional API-token mode
+> is tested against a local mock of Jira. See [docs/release-checklist.md](docs/release-checklist.md#readiness).
 
 ## What it does
 
@@ -55,8 +52,8 @@ wizard and `git2jira doctor` tell you to install it globally.
 Until then, build and install the tarball:
 
 ```sh
-pnpm install && pnpm pack                    # → git2jira-ai-0.9.1.tgz
-npm install -g ./git2jira-ai-0.9.1.tgz
+pnpm install && pnpm pack                    # → git2jira-ai-0.9.2.tgz
+npm install -g ./git2jira-ai-0.9.2.tgz
 git2jira init
 ```
 

@@ -3,6 +3,27 @@
 All notable changes to Git2Jira AI. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/). Nothing has been published to npm yet.
 
+## [0.9.2] — 2026-10-09 (release candidate)
+
+First version tested against the real Atlassian Rovo MCP server, on a corporate Jira Cloud site: a
+report was published as a new comment.
+
+### Fixed
+
+- **MCP access reported `no-jira-access` for accounts with Jira access.** The real server answers the
+  sites tool as `{"data":{"resources":[{"cloudId","url","products":[…]}]}}`; the parser expected the REST
+  array. Any tool result wrapped in `{"data": …}` is now unwrapped; sites without Jira are ignored.
+- **MCP publication stayed off (`unknown`) because the server has no `listJiraIssueComments`.**
+  Comments are now read from `getJiraIssue` (`fields.comment`, a page with a total). An issue without
+  that field counts as an incomplete listing, so a report is never re-sent. The listing tool is used when
+  present but no longer required.
+
+### Added
+
+- `/jira-report` warns, and asks before continuing, when an issue already has reports recorded without a
+  Jira site and the new report would start again at #1 with a full report.
+- `*.tgz` in `.gitignore`.
+
 ## [0.9.1] — 2026-10-08 (release candidate)
 
 First version intended for npm. The package contents are the same as 0.9.0.

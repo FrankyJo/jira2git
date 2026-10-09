@@ -7,7 +7,8 @@ import { Git2JiraError, UsageError } from '../../core/errors';
 import { VERSION } from '../../core/version';
 import { isOpen } from '../../delivery/draft';
 import { resolveDeliveryMode } from '../../delivery/mode';
-import { resolveDeliverySite } from '../../delivery/site';
+import { PLACEHOLDER_SITE_URL, resolveDeliverySite } from '../../delivery/site';
+import { jiraSiteFromUrl } from '../../checkpoints/site';
 import { resolveLanguage } from '../../localization/resolve';
 import { ATLASSIAN_TOOLS, DEFAULT_MCP_SERVER_NAME, claudeToolPrefix } from '../../mcp/tools';
 import { SKILL_USAGE, parseSkillArguments } from '../../skill/args';
@@ -202,6 +203,27 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
   const verification = await ctx.container.resolve('mcpVerificationStore').read();
 
   const warnings: string[] = [];
+  // Reports confirmed before jira.site was set live under the placeholder lineage. A report
+  // for a real site would start again at #1 with everything since the branch began.
+  const placeholderId = jiraSiteFromUrl(PLACEHOLDER_SITE_URL).id;
+  if (!site.placeholder || mode.mode === 'mcp') {
+    const earlier = identity.historySites.find((s) => s.id === placeholderId);
+    if (earlier) {
+      const journal = await ctx.container
+        .resolve('lineageStore')
+        .read(repository, earlier.id, issueKey)
+        .catch(() => undefined);
+      const confirmed = latestCheckpoint(journal);
+      if (confirmed) {
+        warnings.push(
+          `${issueKey} already has report #${String(confirmed.sequence)} recorded without a Jira site ` +
+            '(before jira.site was set). That history is separate: a report for ' +
+            `${site.url ?? 'the Jira site'} starts again at #1 and covers all work since the branch began. ` +
+            'Ask the user before preparing it.',
+        );
+      }
+    }
+  }
   let skill: Record<string, unknown>;
   try {
     const state = await ctx.container.resolve('skillInstaller').status();

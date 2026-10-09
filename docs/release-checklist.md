@@ -41,18 +41,18 @@ date, site type (personal / corporate), and results in the release notes.
 
 Assessment for 0.9.x (2026-10-08), from the Phase 6 audit.
 
-| Delivery mode              | Verdict                                       | Basis                                                                                                                    |
-| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| A. Personal manual mode    | **Ready** (release candidate)                 | Needs no Jira access; full lifecycle tested with real Git through the CLI and the shipped Skill rules; tarball tested    |
-| B. Corporate Atlassian MCP | **Not production-ready; experimental**        | Only simulated MCP tools tested. OAuth, Jira read/write permissions, admin policies, and Rovo result shapes not verified |
-| C. Personal API-token mode | **Ready for personal use, with caveats**      | Tested against a local Jira mock (auth, pagination, retries, lost responses), not a real Jira Cloud site                 |
-| D. Public npm distribution | **Ready to publish as 0.9.1 after section 2** | Tarball installs and runs outside the repository; manual checks in real Claude Code (sections 1–3, 6) still to be done   |
+| Delivery mode              | Verdict                                  | Basis                                                                                                                                                                                              |
+| -------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Personal manual mode    | **Ready** (release candidate)            | Needs no Jira access; full lifecycle tested with real Git through the CLI and the shipped Skill rules; tarball tested                                                                              |
+| B. Corporate Atlassian MCP | **Early; works on one corporate site**   | 2026-10-09: OAuth, site discovery, issue read, and comment creation worked on a real corporate Jira Cloud site. Error formats, policy blocks, and recovery after a lost response not yet seen live |
+| C. Personal API-token mode | **Ready for personal use, with caveats** | Tested against a local Jira mock (auth, pagination, retries, lost responses), not a real Jira Cloud site                                                                                           |
+| D. Public npm distribution | **Ready to distribute as 0.9.2**         | Tarball installs and runs outside the repository; manual checks in real Claude Code (sections 1–3, 6) still to be done                                                                             |
 
 Not claimed anywhere: exactly-once Jira publication. Jira comments have no idempotency key; Git2Jira
 prevents blind duplicates (write-ahead journal, marker search, `UNCERTAIN` state), but a second comment
 is possible if Jira is unreadable for longer than the settle window and the user retries.
 
-Recommended path: publish **0.9.1** with manual mode as the supported mode and MCP labeled experimental;
+Recommended path: distribute **0.9.2** with manual mode as the supported mode and MCP labeled experimental;
 release **1.0.0** after section 4 of skill-verification.md passes on at least one corporate Jira Cloud
 site and the findings (parameter names, result shapes, marker survival, error formats) are recorded in
 [jira-publication.md](jira-publication.md#what-has-and-has-not-been-verified).

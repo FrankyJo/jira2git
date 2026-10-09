@@ -83,7 +83,8 @@ git2jira skill context --json --args '$ARGUMENTS'
   branch name — suggest `--issue KEY-123` —, invalid arguments, …) and stop.
 - `skill.state` other than `installed`, or `skill.matchesCli: false`: tell the user once that the
   installed Skill and the CLI differ and that `git2jira skill install` updates it, then continue.
-- `warnings`: show them.
+- `warnings`: show them. If one says the report "starts again at #1", ask with `AskUserQuestion`
+  whether to continue with a full report or stop, and act on the answer.
 
 The output gives the repository, branch, issue key, resolved `mode` and `language` (with their
 source: an explicit argument wins over configuration), the Jira `site`, the last confirmed

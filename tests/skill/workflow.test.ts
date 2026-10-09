@@ -264,6 +264,16 @@ describe('/jira-report in a controlled Claude Code session', () => {
       expect((await context()).pending).toEqual([]);
     });
 
+    it('warns when earlier reports were recorded without a Jira site and a site is now set', async () => {
+      await s.repo.write('src/a.ts', 'export const a = 1;\n');
+      expect((await confirm(await submit(await prepareManual()))).exitCode).toBe(0);
+      expect((await context()).warnings).toEqual([]);
+      await s.configStore.writeGlobal({ jira: { site: 'https://example.atlassian.net' } });
+      const warned = await context();
+      expect(warned.warnings.join(' ')).toMatch(/report #1 recorded without a Jira site/);
+      expect(warned.warnings.join(' ')).toMatch(/starts again at #1/);
+    });
+
     it('keeps a pending report when the user has not published it, and resumes it later', async () => {
       await s.repo.write('src/a.ts', 'export const a = 1;\n');
       const prepared = await prepareManual();
