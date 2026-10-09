@@ -52,6 +52,64 @@ describe('MCP access assessment', () => {
     ]);
   });
 
+  // Regression: the real Rovo MCP server (2026-10-09) answered the sites tool in this
+  // shape, which the first parser did not read, so access was reported as no-jira-access.
+  const ROVO_RESOURCES = {
+    data: {
+      resources: [
+        {
+          cloudId: 'cbfe1426-c631-40d0-8dc3-6d99e8053c3a',
+          url: 'https://company.atlassian.net',
+          products: [{ id: 'jira', access: 'read-write' }],
+        },
+      ],
+    },
+  };
+
+  it.each([
+    ['as JSON', ROVO_RESOURCES],
+    ['as a text block', [{ type: 'text', text: JSON.stringify(ROVO_RESOURCES) }]],
+    ['as text', JSON.stringify(ROVO_RESOURCES)],
+  ])('reads the Rovo MCP sites shape %s', (_how, result) => {
+    const assessed = assessMcpAccess(probe({ probes: { resources: { ok: true, result } } }));
+    expect(assessed.state).not.toBe('no-jira-access');
+    expect(assessed.sites).toEqual([
+      {
+        cloudId: 'cbfe1426-c631-40d0-8dc3-6d99e8053c3a',
+        url: 'https://company.atlassian.net',
+        name: undefined,
+      },
+    ]);
+  });
+
+  it('ignores Rovo sites without Jira, and still reports no Jira site honestly', () => {
+    const confluenceOnly = {
+      data: {
+        resources: [
+          {
+            cloudId: 'c2',
+            url: 'https://wiki-only.atlassian.net',
+            products: [{ id: 'confluence', access: 'read-write' }],
+          },
+        ],
+      },
+    };
+    expect(
+      assessMcpAccess(probe({ probes: { resources: { ok: true, result: confluenceOnly } } })).state,
+    ).toBe('no-jira-access');
+    expect(
+      assessMcpAccess(
+        probe({ probes: { resources: { ok: true, result: { data: { resources: [] } } } } }),
+      ).state,
+    ).toBe('no-jira-access');
+  });
+
+  it('unwraps a {"data": …} envelope for the other result parsers too', () => {
+    expect(
+      parseIssueLookup({ data: { id: '10001', key: 'ABC-1', fields: { summary: 'Profile' } } }),
+    ).toMatchObject({ id: '10001', key: 'ABC-1', summary: 'Profile' });
+  });
+
   it('OAuth not completed: no tools in the session', () => {
     const result = assessMcpAccess(probe({ tools: ['Read', 'Bash'], probes: {} }));
     expect(result.state).toBe('no-tools');

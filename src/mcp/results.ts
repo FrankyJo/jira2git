@@ -42,6 +42,17 @@ export function unwrapToolResult(raw: unknown, depth = 0): unknown {
   ) {
     return unwrapToolResult(content.data.content, depth + 1);
   }
+  // The Rovo MCP server wraps payloads as `{"data": …}` (seen 2026-10-09 on
+  // getAccessibleAtlassianResources). Only an object whose sole key is `data` is unwrapped.
+  if (
+    typeof raw === 'object' &&
+    raw !== null &&
+    !Array.isArray(raw) &&
+    Object.keys(raw).length === 1 &&
+    'data' in raw
+  ) {
+    return unwrapToolResult(raw.data, depth + 1);
+  }
   return raw;
 }
 
@@ -189,27 +200,51 @@ export function parseAccountId(raw: unknown): string | undefined {
 }
 
 /** Sites from `getAccessibleAtlassianResources`: `[{ id, url, name, scopes }]`. */
+const ResourceShape = z.looseObject({
+  id: z.string().min(1).max(100).optional(),
+  /** Rovo MCP's own field name for the site's cloud id. */
+  cloudId: z.string().min(1).max(100).optional(),
+  url: z.url({ protocol: /^https$/ }),
+  name: z.string().max(200).optional(),
+  /** Atlassian REST shape: OAuth scopes such as `read:jira-work`. */
+  scopes: z.array(z.string()).optional(),
+  /** Rovo MCP shape: products on the site, e.g. `{ id: "jira", access: "read-write" }`. */
+  products: z.array(z.looseObject({ id: z.string(), access: z.string().optional() })).optional(),
+});
+
+/**
+ * Sites from the sites tool. Accepts the Atlassian REST shape (an array of
+ * `{ id, url, name, scopes }`) and the shape the Rovo MCP server returned on
+ * 2026-10-09: `{ data: { resources: [{ cloudId, url, products: [{ id, access }] }] } }`.
+ * When products are listed, only sites that include Jira count.
+ */
 export function parseAccessibleResources(
   raw: unknown,
 ): { cloudId: string; url: string; name: string | undefined; scopes: string[] }[] {
   const value = unwrapToolResult(raw);
-  const parsed = z
-    .array(
-      z.looseObject({
-        id: z.string().min(1).max(100),
-        url: z.url({ protocol: /^https$/ }),
-        name: z.string().max(200).optional(),
-        scopes: z.array(z.string()).optional(),
-      }),
-    )
+  const list = z
+    .union([z.array(z.unknown()), z.looseObject({ resources: z.array(z.unknown()) })])
     .safeParse(value);
-  if (!parsed.success) return [];
-  return parsed.data.map((r) => ({
-    cloudId: r.id,
-    url: new URL(r.url).origin,
-    name: r.name,
-    scopes: r.scopes ?? [],
-  }));
+  if (!list.success) return [];
+  const items = Array.isArray(list.data) ? list.data : list.data.resources;
+  const sites: { cloudId: string; url: string; name: string | undefined; scopes: string[] }[] = [];
+  for (const item of items) {
+    const parsed = ResourceShape.safeParse(item);
+    if (!parsed.success) continue;
+    const r = parsed.data;
+    const cloudId = r.cloudId ?? r.id;
+    if (cloudId === undefined) continue;
+    if (r.products !== undefined && !r.products.some((p) => p.id.toLowerCase().includes('jira'))) {
+      continue;
+    }
+    sites.push({
+      cloudId,
+      url: new URL(r.url).origin,
+      name: r.name,
+      scopes: r.scopes ?? r.products?.map((p) => `${p.id}:${p.access ?? ''}`) ?? [],
+    });
+  }
+  return sites;
 }
 
 /** Report markers in a comment, trusted only when there is exactly one. */
