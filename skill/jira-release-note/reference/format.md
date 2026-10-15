@@ -6,15 +6,15 @@ The CLI renders the release note; you write one JSON object (`schemaVersion: 1`)
 
 ## Structure
 
-| Field                  | What goes in it                                                                      |
-| ---------------------- | ------------------------------------------------------------------------------------ |
-| `issueKey`, `language` | exactly as given in `contract` (the CLI rejects anything else)                       |
-| `goal.statement`       | the purpose of the feature, one or two sentences; rendered as "Ціль – …"             |
-| `goal.source`          | `jira` when taken from the issue, `user` when the user said it, otherwise `inferred` |
-| `goal.objectives`      | 2–6 expected effects: a short `title` and an optional one-sentence `description`     |
-| `sections`             | one per functional area, in the order a user meets them; title = short noun phrase   |
-| `sections[].blocks`    | the content, see below                                                               |
-| `openQuestions`        | what you could not establish; shown to the user, never published                     |
+| Field                  | What goes in it                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `issueKey`, `language` | exactly as given in `contract` (the CLI rejects anything else)                            |
+| `goal.statement`       | the purpose of the feature, one or two sentences; rendered as "Ціль – …"                  |
+| `goal.source`          | `jira` from the issue or its parent (epic), `user` when the user said it, else `inferred` |
+| `goal.objectives`      | 2–6 expected effects: a short `title` and an optional one-sentence `description`          |
+| `sections`             | one per functional area, in the order a user meets them; title = short noun phrase        |
+| `sections[].blocks`    | the content, see below                                                                    |
+| `openQuestions`        | what you could not establish; shown to the user, never published                          |
 
 After the goal the CLI adds the fixed line "В рамках цієї задачі було реалізовано наступний
 функціонал:", then the sections. You never write headings, the title, or that line yourself.
@@ -36,6 +36,10 @@ Every block except `screenshot` has `source` (`code`, `jira`, `user`, `inferred`
 (changed file paths that show the fact; **required** for `code`, never rendered).
 
 ## Writing rules
+
+- The goal comes from the issue description; if it does not state one, from the parent issue (epic,
+  `parentIssue`), narrowed to this issue's part; then from the user. Infer it only as a last resort,
+  with a question in `openQuestions`.
 
 - Audience: users and the business. Explain what they can do, what they see, and which rules apply.
 - Quote UI captions exactly as the code shows them, in quotation marks: “+НОВЕ БРОНЮВАННЯ”.

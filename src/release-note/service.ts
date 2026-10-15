@@ -18,7 +18,7 @@ import { terminalSafeLine } from '../core/sanitize';
 import { VERSION } from '../core/version';
 import type { DraftStore } from '../delivery/draft';
 import type { BaseBranchResolver } from '../git/base';
-import type { GitRepositoryLocator, RepositoryInfo } from '../git/types';
+import { IssueKeySchema, type GitRepositoryLocator, type RepositoryInfo } from '../git/types';
 import { IssueKeyMismatchError } from '../jira/client/errors';
 import { RELEASE_NOTE_LABELS } from '../localization/catalog';
 import { McpReconcileInputSchema, McpWriteResultSchema } from '../mcp/bridge';
@@ -43,7 +43,7 @@ import {
   type ReleaseNoteDraft,
   type ReleaseNoteStore,
 } from './draft';
-import type { EarlierReport } from './prompt';
+import type { EarlierReport, WriterContext } from './prompt';
 import { findReleaseNoteMarkers, releaseNoteMarker, renderReleaseNote } from './render';
 import type {
   ReleaseNoteMcpOutcome,
@@ -116,7 +116,13 @@ export class ReleaseNoteService {
       mcp = {
         server: request.mcp.server,
         cloudId: request.mcp.cloudId,
-        issue: { id: found.id, summary: found.summary.slice(0, 2000) },
+        issue: {
+          id: found.id,
+          summary: found.summary.slice(0, 2000),
+          ...(found.parent
+            ? { parent: { ...found.parent, key: IssueKeySchema.parse(found.parent.key) } }
+            : {}),
+        },
       };
       lookupDescription = found.description;
     }
@@ -194,7 +200,7 @@ export class ReleaseNoteService {
       draft,
       changeSet,
       analysis: this.packageFor(repository, draft, changeSet),
-      earlierReports: await this.earlierReports(repository, issueKey),
+      context: await this.writerContext(repository, draft),
       delivered: existing.filter(
         (d) => d.issueKey === issueKey && DELIVERED_RELEASE_NOTE_STATUSES.includes(d.status),
       ),
@@ -208,15 +214,60 @@ export class ReleaseNoteService {
   ): Promise<{
     draft: ReleaseNoteDraft;
     analysis: AnalysisPackage;
-    earlierReports: EarlierReport[];
+    context: WriterContext;
   }> {
     const repository = await this.deps.locator.locate(cwd);
     const draft = await this.deps.notes.read(repository, noteId);
     return {
       draft,
       analysis: this.packageFor(repository, draft, await this.changeSetOf(repository, draft)),
-      earlierReports: await this.earlierReports(repository, draft.issueKey),
+      context: await this.writerContext(repository, draft),
     };
+  }
+
+  /**
+   * Adds the parent issue (usually the epic) as context, for when the issue does not state
+   * its goal. Only the parent named by the issue lookup is accepted: the Skill cannot point
+   * the writer at an arbitrary issue. Changes nothing in Jira and nothing else in the draft.
+   */
+  async addParent(cwd: string, noteId: string, lookup: unknown): Promise<ReleaseNoteDraft> {
+    const repository = await this.deps.locator.locate(cwd);
+    return this.withLock(repository, noteId, async () => {
+      const draft = await this.deps.notes.read(repository, noteId);
+      if (draft.status !== 'DRAFT' && draft.status !== 'READY') {
+        throw new Git2JiraError(
+          `Release note ${noteId} is ${draft.status}; its content can no longer change.`,
+        );
+      }
+      const expected = draft.mcp?.issue.parent;
+      if (!expected) {
+        throw new UsageError(
+          draft.mode === 'mcp'
+            ? `The Jira lookup of ${draft.issueKey} names no parent issue. Ask the user for the goal instead.`
+            : 'Manual release notes have no Jira access. Ask the user for the goal instead.',
+        );
+      }
+      const found = parseIssueLookup(lookup);
+      if (!found) {
+        throw new Git2JiraError(
+          `The MCP issue lookup result for ${expected.key} could not be read. Nothing was added.`,
+        );
+      }
+      if (found.key !== expected.key) throw new IssueKeyMismatchError(expected.key, found.key);
+      const parent = {
+        key: expected.key,
+        ...(expected.type ? { type: expected.type } : {}),
+        ...(found.summary ? { title: found.summary.slice(0, 2000) } : {}),
+        ...(found.description ? { description: found.description.slice(0, 20_000) } : {}),
+      };
+      return this.deps.notes.transition(
+        repository,
+        draft,
+        { ...draft, issueContext: { ...draft.issueContext, parent } },
+        this.now(),
+        `parent issue ${expected.key} read`,
+      );
+    });
   }
 
   /** Validates the writer's JSON, renders it, and computes the digest. Never writes to Jira. */
@@ -571,6 +622,31 @@ export class ReleaseNoteService {
       },
       reportDiffOptions(),
     );
+  }
+
+  /** What the writer gets besides the diff. Jira and model text: redacted, untrusted data. */
+  private async writerContext(
+    repository: RepositoryInfo,
+    draft: ReleaseNoteDraft,
+  ): Promise<WriterContext> {
+    const clean = (text: string | undefined, max: number) =>
+      text === undefined ? undefined : redactSecrets(text).text.slice(0, max);
+    const stored = draft.issueContext?.parent;
+    const available = draft.mcp?.issue.parent;
+    return {
+      earlierReports: await this.earlierReports(repository, draft.issueKey),
+      ...(stored
+        ? {
+            parentIssue: {
+              key: stored.key,
+              type: stored.type,
+              title: clean(stored.title, 2000),
+              description: clean(stored.description, 20_000),
+            },
+          }
+        : {}),
+      ...(available ? { parentAvailable: { key: available.key, type: available.type } } : {}),
+    };
   }
 
   /** Confirmed reports of the issue, as context for the writer. Model-written: redacted data. */

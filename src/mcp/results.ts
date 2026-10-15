@@ -174,15 +174,31 @@ function commentPageOf(value: unknown): unknown {
   return issue.success ? issue.data.fields.comment : unwrapped;
 }
 
-/** The issue a lookup returned: Jira's `{ id, key, fields: { summary } }`, possibly wrapped. */
+/** The parent of an issue (an epic, or the issue above a sub-task), as Jira's `fields.parent`. */
+export interface IssueParent {
+  key: string;
+  summary?: string;
+  type?: string;
+}
+
+/**
+ * The issue a lookup returned: Jira's `{ id, key, fields: { summary, description, parent } }`,
+ * possibly wrapped. Classic "Epic Link" custom fields are not read: their ids differ per site.
+ */
 export function parseIssueLookup(
   raw: unknown,
-): { id: string; key: string; summary: string; description?: string } | undefined {
+):
+  | { id: string; key: string; summary: string; description?: string; parent?: IssueParent }
+  | undefined {
   const IssueShape = z.looseObject({
     id: IdSchema,
     key: z.string().min(1).max(100),
     fields: z
-      .looseObject({ summary: z.string().optional(), description: z.unknown().optional() })
+      .looseObject({
+        summary: z.string().optional(),
+        description: z.unknown().optional(),
+        parent: z.unknown().optional(),
+      })
       .optional(),
   });
   const value = unwrapToolResult(raw);
@@ -197,12 +213,33 @@ export function parseIssueLookup(
       : described
         ? adfToPlainText(described, 20_000)
         : '';
+  const parent = parseParent(issue.fields?.parent);
   return {
     id: String(issue.id),
     key: issue.key,
     summary: issue.fields?.summary ?? '',
     ...(description ? { description } : {}),
+    ...(parent ? { parent } : {}),
   };
+}
+
+function parseParent(raw: unknown): IssueParent | undefined {
+  const parsed = z
+    .looseObject({
+      key: z.string().regex(/^[A-Z][A-Z0-9_]*-[1-9][0-9]*$/),
+      fields: z
+        .looseObject({
+          summary: z.string().optional(),
+          issuetype: z.looseObject({ name: z.string().optional() }).optional(),
+        })
+        .optional(),
+    })
+    .safeParse(raw);
+  if (!parsed.success) return undefined;
+  const { key, fields } = parsed.data;
+  const summary = fields?.summary?.slice(0, 2000);
+  const type = fields?.issuetype?.name?.slice(0, 100);
+  return { key, ...(summary ? { summary } : {}), ...(type ? { type } : {}) };
 }
 
 /** Account id from `atlassianUserInfo` (`account_id`) or a Jira user (`accountId`). */

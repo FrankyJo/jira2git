@@ -49,6 +49,15 @@ describe('release notes: security', () => {
     expect(result.prompted).toBe(false);
   });
 
+  it('pre-approves reading the parent issue, which only adds context to the local draft', async () => {
+    const result = await s.bash(
+      ['release-note', 'parent', '--note', 'x', '--issue-lookup', '-'],
+      {},
+    );
+    expect(result.prompted).toBe(false);
+    expect(result.exitCode).not.toBe(0);
+  });
+
   it('never pre-approves confirming, publishing, or cancelling a release note', async () => {
     for (const command of [
       ['release-note', 'confirm', '--note', 'x', '--digest', 'y'],

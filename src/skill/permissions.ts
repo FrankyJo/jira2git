@@ -25,6 +25,7 @@ export const PREAPPROVABLE_SUBCOMMANDS = [
   'mcp verify',
   'release-note prepare',
   'release-note request',
+  'release-note parent',
   'release-note submit',
   'release-note show',
   'release-note pending',

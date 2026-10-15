@@ -3,7 +3,7 @@ import type { JiraSite } from '../checkpoints/types';
 import type { Language } from '../localization/languages';
 import type { ChangeSet } from '../snapshots/types';
 import type { ReleaseNoteDraft } from './draft';
-import type { EarlierReport } from './prompt';
+import type { WriterContext } from './prompt';
 
 export interface ReleaseNotePrepareRequest {
   mode: 'manual' | 'mcp';
@@ -27,7 +27,8 @@ export type ReleaseNotePrepareOutcome =
       draft: ReleaseNoteDraft;
       changeSet: ChangeSet;
       analysis: AnalysisPackage;
-      earlierReports: EarlierReport[];
+      /** Earlier reports and the parent issue, for the writer. */
+      context: WriterContext;
       /** Release notes of this issue already in Jira (or stated to be). */
       delivered: ReleaseNoteDraft[];
     }

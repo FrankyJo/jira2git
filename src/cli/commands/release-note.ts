@@ -113,9 +113,9 @@ export function createReleaseNoteCommand(ctx: CliContext): Command {
         }
         return;
       }
-      const { draft, changeSet, analysis, earlierReports, delivered } = outcome;
+      const { draft, changeSet, analysis, context, delivered } = outcome;
       if (options.json) {
-        const generation = buildReleaseNoteRequest(analysis, earlierReports);
+        const generation = buildReleaseNoteRequest(analysis, context);
         println(
           ctx.stdout,
           JSON.stringify(
@@ -126,7 +126,8 @@ export function createReleaseNoteCommand(ctx: CliContext): Command {
               head: draft.head,
               files: changeSet.files,
               commits: changeSet.commits.length,
-              earlierReports: earlierReports.length,
+              earlierReports: context.earlierReports.length,
+              issue: issueFacts(draft),
               delivered: delivered.map(noteSummary),
               contract: { schemaVersion: 1, issueKey: draft.issueKey, language: draft.language },
               coverage: analysis.coverage,
@@ -162,7 +163,7 @@ export function createReleaseNoteCommand(ctx: CliContext): Command {
     .requiredOption('-n, --note <id>', 'release note id')
     .option('--json', 'print machine-readable JSON (always JSON)')
     .action(async (options: { note: string }) => {
-      const { draft, analysis, earlierReports } = await service().analysis(ctx.cwd, options.note);
+      const { draft, analysis, context } = await service().analysis(ctx.cwd, options.note);
       if (!isOpenReleaseNote(draft)) {
         throw new Git2JiraError(`Release note ${draft.noteId} is ${draft.status}; it is finished.`);
       }
@@ -173,7 +174,8 @@ export function createReleaseNoteCommand(ctx: CliContext): Command {
         files: analysis.files,
         contract: { schemaVersion: 1, issueKey: draft.issueKey, language: draft.language },
         coverage: analysis.coverage,
-        generation: buildReleaseNoteRequest(analysis, earlierReports),
+        issue: issueFacts(draft),
+        generation: buildReleaseNoteRequest(analysis, context),
       };
       const requestFile = await writeRequestFile(
         repository,
@@ -181,6 +183,43 @@ export function createReleaseNoteCommand(ctx: CliContext): Command {
         payload,
       );
       println(ctx.stdout, JSON.stringify({ ...payload, requestFile }, null, 2));
+    });
+
+  command
+    .command('parent')
+    .description(
+      'MCP mode: add the parent issue (usually the epic) as context, when the issue does not state its goal.',
+    )
+    .requiredOption('-n, --note <id>', 'release note id')
+    .requiredOption(
+      '--issue-lookup <file>',
+      'raw result of the issue lookup tool for the parent, or -',
+    )
+    .option('--json', 'print the updated generation request as JSON')
+    .action(async (options: { note: string; issueLookup: string; json?: boolean }) => {
+      await service().addParent(ctx.cwd, options.note, await readJson(ctx, options.issueLookup));
+      const { draft, analysis, context } = await service().analysis(ctx.cwd, options.note);
+      if (options.json) {
+        println(
+          ctx.stdout,
+          JSON.stringify(
+            {
+              result: 'parent-added',
+              ...noteSummary(draft),
+              issue: issueFacts(draft),
+              generation: buildReleaseNoteRequest(analysis, context),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      const parent = draft.issueContext?.parent;
+      println(
+        ctx.stdout,
+        `Added ${parent?.key ?? 'the parent issue'} as context for the release note of ${draft.issueKey}.`,
+      );
     });
 
   command
@@ -427,6 +466,26 @@ interface PrepareOptions {
   cloudId?: string;
   issueLookup?: string;
   json?: boolean;
+}
+
+/** What the Skill needs to decide whether the goal is known (MCP mode: from Jira). */
+function issueFacts(draft: ReleaseNoteDraft) {
+  const parent = draft.mcp?.issue.parent;
+  const read = draft.issueContext?.parent;
+  return {
+    key: draft.issueKey,
+    summary: draft.issueContext?.title ?? null,
+    hasDescription: (draft.issueContext?.description ?? '').trim() !== '',
+    parent: parent
+      ? {
+          key: parent.key,
+          type: parent.type ?? null,
+          summary: parent.summary ?? null,
+          read: read !== undefined,
+          hasDescription: (read?.description ?? '').trim() !== '',
+        }
+      : null,
+  };
 }
 
 async function pick(ctx: CliContext, noteId: string | undefined): Promise<ReleaseNoteDraft> {

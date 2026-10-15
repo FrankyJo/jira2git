@@ -110,6 +110,18 @@ export const ReleaseNoteDraftSchema = z
       .strictObject({
         title: z.string().max(2000).optional(),
         description: z.string().max(20_000).optional(),
+        /**
+         * The parent issue (usually the epic), read when the issue itself does not state
+         * the goal. Untrusted, like the issue text; its key comes from the issue lookup.
+         */
+        parent: z
+          .strictObject({
+            key: IssueKeySchema,
+            type: z.string().max(100).optional(),
+            title: z.string().max(2000).optional(),
+            description: z.string().max(20_000).optional(),
+          })
+          .optional(),
       })
       .optional(),
     /** MCP mode: where and on which issue the comment goes. */
@@ -117,7 +129,18 @@ export const ReleaseNoteDraftSchema = z
       .strictObject({
         server: McpServerNameSchema,
         cloudId: z.string().min(1).max(100),
-        issue: z.strictObject({ id: z.string().min(1).max(50), summary: z.string().max(2000) }),
+        issue: z.strictObject({
+          id: z.string().min(1).max(50),
+          summary: z.string().max(2000),
+          /** `fields.parent` of the issue lookup: the only parent `release-note parent` accepts. */
+          parent: z
+            .strictObject({
+              key: IssueKeySchema,
+              summary: z.string().max(2000).optional(),
+              type: z.string().max(100).optional(),
+            })
+            .optional(),
+        }),
       })
       .optional(),
     note: ReleaseNoteSchema.optional(),

@@ -99,7 +99,7 @@ describe('release notes', () => {
     ]);
     expect(prepared.draft.base.name).toBe('main');
     expect(prepared.draft.head.commit).toBe(h.repo.head());
-    expect(prepared.earlierReports).toEqual([
+    expect(prepared.context.earlierReports).toEqual([
       expect.objectContaining({ sequence: 1, summary: 'Додано сторінку профілю.' }),
     ]);
     // Nothing about report checkpoints changed.

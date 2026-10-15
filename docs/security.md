@@ -79,7 +79,8 @@
     language, or snapshot, or claiming tests, deployments, or approvals without evidence are rejected.
 
 21. **Release notes follow the same boundary.** `/jira-release-note` pre-approves only read-only
-    `release-note` subcommands (`prepare`, `request`, `submit`, `show`, `pending`, `copy`, `export`);
+    `release-note` subcommands (`prepare`, `request`, `parent`, `submit`, `show`, `pending`, `copy`,
+    `export`); `parent` only adds the parent issue named by the issue lookup to the local draft;
     `confirm`, `publish`, `record-result`, `reconcile`, and `cancel` always prompt. `prepare` writes only
     its own draft below the Git common directory, and `export` has no output option. Publication is
     bound to the digest of the exact text, the issue, the site, and the `HEAD` commit; release notes never

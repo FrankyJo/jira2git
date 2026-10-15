@@ -7,6 +7,7 @@ allowed-tools:
   - Bash(git2jira skill context *)
   - Bash(git2jira release-note prepare *)
   - Bash(git2jira release-note request *)
+  - Bash(git2jira release-note parent *)
   - Bash(git2jira release-note submit *)
   - Bash(git2jira release-note show *)
   - Bash(git2jira release-note pending *)
@@ -133,6 +134,35 @@ ask the user which branch the issue branch started from and pass `--base <branch
 Read `generation.instructions` and every part of `generation.parts`, then
 [reference/format.md](reference/format.md).
 
+**First, the goal.** A release note starts with the purpose of the feature, and it must not be
+guessed. Read the whole issue description (`issue` in the first part). It states the goal only if it
+says why the work is done: a purpose, motivation, or the problem solved. A description that is empty,
+or holds only technical steps, links, checklists, or acceptance criteria, does not.
+
+When the issue does not state its goal, look further before inferring anything:
+
+- **MCP mode, the issue has a parent** (`issue.parent` in the prepare output; usually the epic): call
+  the issue tool for `issue.parent.key` on the same cloud id and pass the raw result:
+
+  ```bash
+  git2jira release-note parent --note <noteId> --json --issue-lookup - <<'<heredocDelimiter>'
+  <raw issue tool result for the parent>
+  <heredocDelimiter>
+  ```
+
+  The output has the updated `generation`; the parent's text arrives as `parentIssue`. The CLI accepts
+  only the parent named by the issue lookup. Take the goal from the parent, narrowed to what this
+  issue contributes (`"source": "jira"`). If the parent does not state a goal either, go on to step 6.
+
+- **MCP mode, no parent** (`issue.parent` is `null`), or **manual mode** (no Jira access): ask the user
+  in step 6. Mention that the goal is often written in the epic, and ask them to paste it or say it in
+  their own words.
+
+Only when none of these give a goal, infer one from the change set (`"source": "inferred"`) and add a
+question about it to `openQuestions`.
+
+**Then, the functionality.**
+
 The diff alone rarely shows everything users need. Use `Read`, `Grep`, and `Glob` (read-only) on the
 repository to find, **for the changed functionality only**:
 
@@ -148,13 +178,15 @@ Files read from disk may contain uncommitted work: describe only what the change
 For a large change set (several `generation.parts`, or more than about 40 files) delegate the writing
 to the read-only `jira-release-writer` subagent: run
 `git2jira release-note request --note <noteId> --json`, then give it the `requestFile` path, the
-language, the issue key, and the user's answers from step 6 (if you already have them). Ask for the
+language, the issue key, and the user's answers from step 6 (if you already have them). Read the
+parent (above) before you run `request`, so the file contains it. Ask for the
 JSON only, and check it against [reference/format.md](reference/format.md) before submitting.
 
 ### 6. Ask the user what the code cannot show
 
-List in **one** message the facts you need and could not find in the code or the Jira issue, at most
-five, for example: the purpose of the feature (when the issue has no description), the address of the
+List in **one** message the facts you need and could not find in the code, the Jira issue, or its
+parent, at most five, for example: the purpose of the feature (when neither the issue nor its epic
+states it; ask them to paste it from the epic), the address of the
 system, how users get access (which request, which roles), organisational rules and exceptions. Say
 that the user may answer some, all, or none ("skip"). Wait for the answer. Use what they give with
 `"source": "user"`; leave out what they skip and keep it in `openQuestions`.

@@ -40,11 +40,30 @@ purpose of the feature). Every block carries a `source`, shown in the preview an
 `openQuestions` lists what the writer could not establish; it is shown, never published. Confirmed
 `/jira-report` reports of the issue (local drafts) are given to the writer as redacted context.
 
+## Where the goal comes from
+
+The goal ("Ціль") must not be guessed. In order:
+
+1. The issue description, read in full. It states the goal only if it says why the work is done; a
+   description with only technical steps, links, checklists, or acceptance criteria does not.
+2. The parent issue, usually the epic. In MCP mode the issue lookup's `fields.parent` is recorded at
+   `prepare` (shown as `issue.parent` in its output); the Skill reads it with the issue tool and passes
+   the result to `git2jira release-note parent`, which accepts only that parent's key. Its summary and
+   description reach the writer as `parentIssue`, redacted and fenced like the issue text. The goal is
+   taken from it, narrowed to what the issue contributes (`source: jira`).
+3. The user (`source: user`). In manual mode, or without a parent, the Skill asks for the goal and
+   mentions that it is often written in the epic.
+4. Only then inferred (`source: inferred`), with a question in `openQuestions`.
+
+Classic "Epic Link" custom fields are not read (their ids differ per site); Jira Cloud exposes epics
+as `fields.parent`.
+
 ## CLI: `git2jira release-note`
 
 | Command                             | Effect                                                                           | In the Skill |
 | ----------------------------------- | -------------------------------------------------------------------------------- | ------------ |
 | `prepare`                           | resolve merge-base and `HEAD`, build the redacted analysis package, save a draft | pre-approved |
+| `parent`                            | MCP: add the parent issue (epic) named by the issue lookup as context            | pre-approved |
 | `request`                           | private request file for the `jira-release-writer` subagent                      | pre-approved |
 | `submit`                            | validate the JSON, render Markdown, text, and ADF, compute the digest            | pre-approved |
 | `show`, `pending`, `copy`, `export` | read the finished text (`export` writes only to `.git/git2jira/exports`)         | pre-approved |

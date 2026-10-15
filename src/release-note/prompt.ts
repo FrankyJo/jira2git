@@ -19,6 +19,22 @@ export interface EarlierReport {
   work: string[];
 }
 
+/** The parent issue (usually the epic), read when the issue does not state its goal. */
+export interface ParentIssue {
+  key: string;
+  type?: string | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
+}
+
+/** Context beyond the diff. Redacted, untrusted data. */
+export interface WriterContext {
+  earlierReports: readonly EarlierReport[];
+  parentIssue?: ParentIssue | undefined;
+  /** The issue lookup named a parent that has not been read yet (MCP mode). */
+  parentAvailable?: { key: string; type?: string | undefined } | undefined;
+}
+
 export function releaseNoteJsonSchema(): Record<string, unknown> {
   return z.toJSONSchema(ReleaseNoteContentSchema, { io: 'input', target: 'draft-7' });
 }
@@ -34,7 +50,7 @@ const LANGUAGE_GUIDANCE: Readonly<Record<Language, string>> = {
 
 export function buildReleaseNoteRequest(
   pkg: AnalysisPackage,
-  earlierReports: readonly EarlierReport[] = [],
+  context: WriterContext = { earlierReports: [] },
   nonce: string = randomBytes(12).toString('hex'),
 ): { instructions: string; parts: string[]; schema: Record<string, unknown> } {
   const labels = RELEASE_NOTE_LABELS[pkg.language];
@@ -62,7 +78,17 @@ export function buildReleaseNoteRequest(
     '',
     'Format (the tool renders headings and fixed phrases; you write content only):',
     `- goal.statement: one sentence or short paragraph, the purpose of the feature (rendered as "${labels.goal} – …").`,
-    '  Take it from the Jira issue when given (source "jira"); otherwise infer it (source "inferred").',
+    '  Where the goal comes from, in this order:',
+    '  1. The issue description, read in full: a stated purpose, goal, motivation, "why", or the',
+    '     problem it solves (source "jira"). A description that only lists technical steps, links,',
+    '     checklists, or acceptance criteria does not state the goal.',
+    '  2. Otherwise the parent issue, usually the epic ("parentIssue" in the data): its purpose,',
+    '     narrowed to what this issue contributes (source "jira").',
+    '  3. Otherwise the user (source "user"). Only as a last resort infer it from the change set',
+    '     (source "inferred") and add a question about the goal to openQuestions.',
+    context.parentAvailable && !context.parentIssue
+      ? `  The issue has a parent (${context.parentAvailable.key}${context.parentAvailable.type ? `, ${context.parentAvailable.type}` : ''}) that has not been read yet. If the issue does not state its goal, do not infer one: add an open question naming that parent, so that it is read first.`
+      : '',
     '- goal.objectives: the expected effects (2–6), each a short title with an optional one-sentence',
     '  description, e.g. "Reduce manual work – automatic checks of …".',
     `- sections: one per functional area (rendered after "${labels.implemented}"), ordered as a`,
@@ -123,8 +149,9 @@ export function buildReleaseNoteRequest(
       ...(index === 0
         ? {
             issue: pkg.untrusted.issue,
+            ...(context.parentIssue ? { parentIssue: context.parentIssue } : {}),
             commits: pkg.untrusted.commits,
-            earlierReports,
+            earlierReports: context.earlierReports,
           }
         : {}),
       ...(chunkCount > 1 ? { part: index + 1, parts: chunkCount } : {}),

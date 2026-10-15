@@ -3,6 +3,15 @@
 All notable changes to Git2Jira AI. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/). Nothing has been published to npm yet.
 
+## [Unreleased]
+
+### Added
+
+- `/jira-release-note` looks further when the issue does not state its goal: in MCP mode it reads the
+  parent issue (usually the epic) with `git2jira release-note parent`, which accepts only the parent
+  named by the issue lookup; otherwise it asks the user, pointing at the epic. The goal is inferred only
+  as a last resort, with an open question.
+
 ## [1.0.2] — 2026-10-15
 
 ### Added

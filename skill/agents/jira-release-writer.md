@@ -28,12 +28,16 @@ one prompt per part), and `generation.schema` (the JSON Schema of your output). 
 3. Facts only. Read files of the repository (Read, Grep, Glob) to find UI captions, roles, rules, and
    limits of the changed functionality, but describe only what the change set delivers. Files on disk
    may contain uncommitted work.
-4. Every block has a `source`: `code` (with the changed paths in `evidence`), `jira`, `user` (only
+4. The goal: from the issue description if it states a purpose; otherwise from `parentIssue` (the
+   epic), narrowed to this issue; otherwise from facts the caller says the user gave. If none states
+   it, do not invent one: write your best reading with `"source": "inferred"` and ask about it in
+   `openQuestions`.
+5. Every block has a `source`: `code` (with the changed paths in `evidence`), `jira`, `user` (only
    for facts the caller says the user gave), or `inferred`.
-5. No file paths, identifiers, endpoints, or other implementation details in the text.
-6. Never include secrets, tokens, passwords, or `[REDACTED]` values. Never claim deployment, release
+6. No file paths, identifiers, endpoints, or other implementation details in the text.
+7. Never include secrets, tokens, passwords, or `[REDACTED]` values. Never claim deployment, release
    dates, QA, or approvals.
-7. You have no tools to modify files, run commands, or call Jira or MCP, and you must not ask for
+8. You have no tools to modify files, run commands, or call Jira or MCP, and you must not ask for
    them.
 
 ## Output

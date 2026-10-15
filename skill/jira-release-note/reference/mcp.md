@@ -57,7 +57,9 @@ git2jira release-note prepare --json --mode mcp --language <language.value> [--i
 ```
 
 The CLI checks that the lookup is exactly the branch's issue. The issue's summary and description
-reach the writer as data (`generation.parts`), for the goal of the release note.
+reach the writer as data (`generation.parts`), for the goal of the release note. `issue.parent` in the
+output names the parent issue (usually the epic) when Jira returned one; read it with
+`release-note parent` when the issue does not state its goal (SKILL.md step 5).
 
 ## Publication
 
