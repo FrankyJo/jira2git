@@ -63,6 +63,38 @@ const BulletListSchema: z.ZodType<BulletListShape> = z.lazy(() =>
   }),
 );
 
+const OrderedListSchema = z.strictObject({
+  type: z.literal('orderedList'),
+  content: z
+    .array(
+      z.strictObject({
+        type: z.literal('listItem'),
+        content: z.array(z.union([ParagraphSchema, BulletListSchema])).min(1),
+      }),
+    )
+    .min(1),
+});
+
+const TableCellSchema = z.strictObject({
+  type: z.enum(['tableHeader', 'tableCell']),
+  content: z.array(ParagraphSchema).min(1),
+});
+
+const TableSchema = z.strictObject({
+  type: z.literal('table'),
+  content: z
+    .array(
+      z.strictObject({ type: z.literal('tableRow'), content: z.array(TableCellSchema).min(1) }),
+    )
+    .min(1),
+});
+
+const PanelSchema = z.strictObject({
+  type: z.literal('panel'),
+  attrs: z.strictObject({ panelType: z.enum(['info', 'note']) }),
+  content: z.array(ParagraphSchema).min(1),
+});
+
 const DocumentShapeSchema = z.strictObject({
   type: z.literal('doc'),
   version: z.literal(1),
@@ -72,6 +104,9 @@ const DocumentShapeSchema = z.strictObject({
         ParagraphSchema,
         HeadingSchema,
         BulletListSchema,
+        OrderedListSchema,
+        TableSchema,
+        PanelSchema,
         z.strictObject({ type: z.literal('rule') }),
       ]),
     )
@@ -79,7 +114,8 @@ const DocumentShapeSchema = z.strictObject({
 });
 
 /**
- * The exact ADF subset Git2Jira emits: no links, mentions, media, or macros.
+ * The exact ADF subset Git2Jira emits: no links, mentions, media, or macros. Ordered lists,
+ * tables, and panels are used only by release notes.
  * Typed as AdfDocument: every value it accepts is one (heading levels are checked numerically).
  */
 export const AdfDocumentSchema = DocumentShapeSchema as unknown as z.ZodType<AdfDocument>;

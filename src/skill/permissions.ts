@@ -23,6 +23,13 @@ export const PREAPPROVABLE_SUBCOMMANDS = [
   'report open',
   'mcp status',
   'mcp verify',
+  'release-note prepare',
+  'release-note request',
+  'release-note submit',
+  'release-note show',
+  'release-note pending',
+  'release-note copy',
+  'release-note export',
 ] as const;
 
 /** Never pre-approved: each one moves a checkpoint, authorizes a write, or discards work. */
@@ -39,6 +46,11 @@ export const GATED_SUBCOMMANDS = [
   'mcp setup',
   'skill install',
   'skill uninstall',
+  'release-note confirm',
+  'release-note cancel',
+  'release-note publish',
+  'release-note record-result',
+  'release-note reconcile',
 ] as const;
 
 const READ_ONLY_MCP_TOOLS: readonly string[] = [

@@ -4,6 +4,7 @@ import { createConnectionsCommand, createLoginCommand, createLogoutCommand } fro
 import { createConfigCommand } from './commands/config';
 import { createHistoryCommand, createRecoverCommand } from './commands/history';
 import { createMcpCommand } from './commands/mcp';
+import { createReleaseNoteCommand } from './commands/release-note';
 import { createReportCommand } from './commands/report';
 import { createDoctorCommand, createInitCommand, createUninstallCommand } from './commands/setup';
 import { createSkillCommand } from './commands/skill';
@@ -32,6 +33,7 @@ export function createProgram(ctx: CliContext): Command {
   program.addCommand(createHistoryCommand(ctx));
   program.addCommand(createRecoverCommand(ctx));
   program.addCommand(createReportCommand(ctx));
+  program.addCommand(createReleaseNoteCommand(ctx));
   program.addCommand(createMcpCommand(ctx));
   program.addCommand(createSkillCommand(ctx));
   program.addCommand(createInitCommand(ctx));

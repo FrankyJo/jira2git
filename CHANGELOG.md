@@ -3,6 +3,25 @@
 All notable changes to Git2Jira AI. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/). Nothing has been published to npm yet.
 
+## [Unreleased]
+
+### Added
+
+- **`/jira-release-note`** (Phase 7): a user-facing release note, in Ukrainian by default, describing
+  everything an issue delivered (merge-base of the branch → last commit; uncommitted work is left
+  out), with the goal, functional sections, steps, roles, tables, UI messages, notes, and screenshot
+  placeholders. Delivered as a new Jira comment by copy and paste or through Atlassian MCP, with the
+  same digest-bound approval as reports. Every block records its source; inferred statements are
+  listed for the user to check.
+- `git2jira release-note …` commands, `skill context --skill jira-release-note`, and the read-only
+  `jira-release-writer` subagent.
+- ADF output supports ordered lists, tables, and panels (release notes only).
+
+### Changed
+
+- `git2jira skill install|uninstall|status|verify` manage both Skills. An existing installation shows
+  as outdated until `git2jira skill install` adds `/jira-release-note`.
+
 ## [0.9.2] — 2026-10-09 (release candidate)
 
 First version tested against the real Atlassian Rovo MCP server, on a corporate Jira Cloud site: a

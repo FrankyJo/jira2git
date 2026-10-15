@@ -239,6 +239,13 @@ const TEST_PASS_CLAIMS: readonly RegExp[] = [
   /(?:протестовано|перевірено тестами)/i,
 ];
 
+/** Deployment, release, and approval claims in `text` that Git cannot show. */
+export function unsupportedClaims(text: string): string[] {
+  return UNSUPPORTED_CLAIMS.filter((claim) => claim.pattern.test(text)).map(
+    (claim) => `it claims ${claim.what}, which Git cannot show`,
+  );
+}
+
 function claimProblems(content: ReportContent, testStatus: TestStatus): string[] {
   const texts = [
     content.summary,
@@ -251,8 +258,7 @@ function claimProblems(content: ReportContent, testStatus: TestStatus): string[]
   ];
   const problems = new Set<string>();
   for (const text of texts) {
-    for (const claim of UNSUPPORTED_CLAIMS)
-      if (claim.pattern.test(text)) problems.add(`it claims ${claim.what}, which Git cannot show`);
+    for (const problem of unsupportedClaims(text)) problems.add(problem);
     if (
       testStatus !== 'passed' &&
       testStatus !== 'partial' &&

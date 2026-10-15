@@ -115,3 +115,31 @@ export class StaticLabelCatalog implements LabelCatalog {
     return REPORT_LABELS[language];
   }
 }
+
+/** Fixed phrases of a rendered release note. Content comes from the writer. */
+export interface ReleaseNoteLabels {
+  title: string;
+  goal: string;
+  /** Lead-in before the functional sections. */
+  implemented: string;
+  note: string;
+  /** `{description}` is replaced with what the screenshot should show. */
+  screenshot: string;
+}
+
+export const RELEASE_NOTE_LABELS: Readonly<Record<Language, ReleaseNoteLabels>> = {
+  en: {
+    title: 'Release Notes',
+    goal: 'Goal',
+    implemented: 'The following functionality was implemented in this issue:',
+    note: 'Note',
+    screenshot: '[Screenshot: {description}]',
+  },
+  uk: {
+    title: 'Release note',
+    goal: 'Ціль',
+    implemented: 'В рамках цієї задачі було реалізовано наступний функціонал:',
+    note: 'Примітка',
+    screenshot: '[Скріншот: {description}]',
+  },
+};

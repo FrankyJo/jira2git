@@ -11,6 +11,7 @@ export const PHASES = {
   4: 'Claude Code Skill /jira-report',
   5: 'Interactive installer, configuration, and npm packaging',
   6: 'Final QA, security audit, and release preparation',
+  7: 'Release notes /jira-release-note',
 } as const;
 
 export type Phase = keyof typeof PHASES;

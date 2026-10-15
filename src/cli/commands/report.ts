@@ -724,7 +724,7 @@ function redacted(text: string): string {
  * Generation requests go to `<git common dir>/git2jira/requests/`, never into the working
  * tree, readable only by the user: they contain (redacted) diffs.
  */
-async function writeRequestFile(
+export async function writeRequestFile(
   repository: RepositoryInfo,
   reportId: string,
   payload: unknown,

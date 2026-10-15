@@ -9,6 +9,21 @@
 export const SKILL_NAME = 'jira-report';
 /** Read-only analysis subagent shipped with the Skill. */
 export const AGENT_NAME = 'jira-reporter';
+
+/** One Skill of the package and its read-only subagent. */
+export interface SkillSpec {
+  skill: string;
+  agent: string;
+}
+
+export const REPORT_SKILL: SkillSpec = { skill: SKILL_NAME, agent: AGENT_NAME };
+/** `/jira-release-note` (Phase 7) and its read-only writer. */
+export const RELEASE_NOTE_SKILL: SkillSpec = {
+  skill: 'jira-release-note',
+  agent: 'jira-release-writer',
+};
+/** Every Skill Git2Jira installs, the primary one first. */
+export const SKILLS: readonly SkillSpec[] = [REPORT_SKILL, RELEASE_NOTE_SKILL];
 /** Written into the Skill directory; marks it as installed (and owned) by Git2Jira. */
 export const MANIFEST_FILE = '.git2jira-skill.json';
 
@@ -62,7 +77,10 @@ export interface SkillVerification {
 }
 
 export interface SkillInstaller {
+  /** The primary Skill (`/jira-report`). */
   readonly location: SkillLocation;
+  /** Every Skill this installer manages. */
+  readonly locations: readonly SkillLocation[];
   status(): Promise<SkillInstallState>;
   /**
    * Installs or upgrades. Never touches a directory or agent file that Git2Jira did not

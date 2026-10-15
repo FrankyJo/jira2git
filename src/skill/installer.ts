@@ -13,13 +13,13 @@ import {
 } from './package';
 import { scanPermissionSettings, type PermissionSettings } from './permissions';
 import {
-  AGENT_NAME,
   MANIFEST_FILE,
-  SKILL_NAME,
+  REPORT_SKILL,
   type SkillInstallResult,
   type SkillInstallState,
   type SkillInstaller,
   type SkillLocation,
+  type SkillSpec,
   type SkillUninstallResult,
   type SkillVerification,
   type SkillVerifyOptions,
@@ -34,15 +34,17 @@ const RelativePathSchema = z
     message: 'unsafe path',
   });
 
+const NameSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/);
+
 /** Ownership record in the Skill directory. Lists every file Git2Jira wrote. */
 export const SkillManifestSchema = z.strictObject({
   schemaVersion: z.literal(1),
   package: z.literal('git2jira-ai'),
-  skill: z.literal(SKILL_NAME),
+  skill: NameSchema,
   version: z.string().min(1).max(50),
   installedAt: z.iso.datetime(),
   files: z.record(RelativePathSchema, Sha256Schema),
-  agent: z.strictObject({ name: z.literal(AGENT_NAME), sha256: Sha256Schema }),
+  agent: z.strictObject({ name: NameSchema, sha256: Sha256Schema }),
 });
 
 export type SkillManifest = z.infer<typeof SkillManifestSchema>;
@@ -54,6 +56,8 @@ export interface FileSkillInstallerOptions {
   claudeHome: string;
   /** Loads the package shipped with this CLI. */
   loadPackage: () => Promise<SkillPackage>;
+  /** Which Skill; `/jira-report` by default. */
+  spec?: SkillSpec;
   now?: () => Date;
 }
 
@@ -68,14 +72,18 @@ export interface FileSkillInstallerOptions {
  */
 export class FileSkillInstaller implements SkillInstaller {
   readonly location: SkillLocation;
+  readonly locations: readonly SkillLocation[];
+  readonly spec: SkillSpec;
   private readonly now: () => Date;
   private loaded: Promise<SkillPackage> | undefined;
 
   constructor(private readonly options: FileSkillInstallerOptions) {
+    this.spec = options.spec ?? REPORT_SKILL;
     this.location = {
-      skillDir: path.join(options.claudeHome, 'skills', SKILL_NAME),
-      agentPath: path.join(options.claudeHome, 'agents', `${AGENT_NAME}.md`),
+      skillDir: path.join(options.claudeHome, 'skills', this.spec.skill),
+      agentPath: path.join(options.claudeHome, 'agents', `${this.spec.agent}.md`),
     };
+    this.locations = [this.location];
     this.now = options.now ?? (() => new Date());
   }
 
@@ -177,8 +185,8 @@ export class FileSkillInstaller implements SkillInstaller {
       case 'installed': {
         const skill = await readOptional(path.join(this.location.skillDir, SKILL_ENTRY));
         const agent = await readOptional(this.location.agentPath);
-        problems.push(...checkSkillFile(skill?.toString('utf8') ?? ''));
-        problems.push(...checkAgentFile(agent?.toString('utf8') ?? ''));
+        problems.push(...checkSkillFile(skill?.toString('utf8') ?? '', this.spec));
+        problems.push(...checkAgentFile(agent?.toString('utf8') ?? '', this.spec));
         break;
       }
       case 'not-installed':
@@ -224,7 +232,7 @@ export class FileSkillInstaller implements SkillInstaller {
           state: {
             ...base,
             state: 'conflict',
-            reason: `An agent named "${AGENT_NAME}" already exists and was not installed by Git2Jira.`,
+            reason: `An agent named "${this.spec.agent}" already exists and was not installed by Git2Jira.`,
             paths: [agentPath],
           },
         };
@@ -245,12 +253,12 @@ export class FileSkillInstaller implements SkillInstaller {
         },
       };
     }
-    if (!manifest) {
+    if (manifest?.skill !== this.spec.skill || manifest.agent.name !== this.spec.agent) {
       return {
         state: {
           ...base,
           state: 'conflict',
-          reason: `A Skill named "${SKILL_NAME}" already exists and was not installed by Git2Jira.`,
+          reason: `A Skill named "${this.spec.skill}" already exists and was not installed by Git2Jira.`,
           paths: [skillDir],
         },
       };
@@ -260,11 +268,11 @@ export class FileSkillInstaller implements SkillInstaller {
     const missingFiles: string[] = [];
     for (const [relative, hash] of Object.entries(manifest.files)) {
       const content = await readOptional(path.join(skillDir, relative));
-      const label = `skills/${SKILL_NAME}/${relative}`;
+      const label = `skills/${this.spec.skill}/${relative}`;
       if (content === undefined) missingFiles.push(label);
       else if (sha256(content) !== hash) modifiedFiles.push(label);
     }
-    const agentLabel = `agents/${AGENT_NAME}.md`;
+    const agentLabel = `agents/${this.spec.agent}.md`;
     if (agent === undefined) missingFiles.push(agentLabel);
     else if (sha256(agent) !== manifest.agent.sha256 && !agentMatchesPackage) {
       modifiedFiles.push(agentLabel);
@@ -311,13 +319,13 @@ export class FileSkillInstaller implements SkillInstaller {
     return {
       schemaVersion: 1,
       package: 'git2jira-ai',
-      skill: SKILL_NAME,
+      skill: this.spec.skill,
       version: pkg.version,
       installedAt: this.now().toISOString(),
       files: Object.fromEntries(
         [...pkg.skillFiles].map(([rel, content]) => [rel, sha256(content)]),
       ),
-      agent: { name: AGENT_NAME, sha256: sha256(pkg.agent) },
+      agent: { name: this.spec.agent, sha256: sha256(pkg.agent) },
     };
   }
 
@@ -325,7 +333,10 @@ export class FileSkillInstaller implements SkillInstaller {
   private async freshInstall(pkg: SkillPackage): Promise<void> {
     const parent = path.dirname(this.location.skillDir);
     await mkdir(parent, { recursive: true });
-    const staging = path.join(parent, `.${SKILL_NAME}.staging-${randomBytes(6).toString('hex')}`);
+    const staging = path.join(
+      parent,
+      `.${this.spec.skill}.staging-${randomBytes(6).toString('hex')}`,
+    );
     try {
       for (const [relative, content] of pkg.skillFiles) {
         const target = path.join(staging, ...relative.split('/'));

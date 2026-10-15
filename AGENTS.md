@@ -9,7 +9,7 @@ incremental Jira implementation reports from Git changes. Read `docs/architectur
 
 ## Current phase
 
-All roadmap phases (0–6) are done (see `docs/roadmap.md`); the project is at release candidate 0.9.2.
+All roadmap phases (0–7) are done (see `docs/roadmap.md`); the project is at release candidate 0.9.2.
 Work on bug fixes and on what `docs/release-checklist.md` lists. New features go through the roadmap
 first. Never add placeholder code that reports success for something it did not do.
 
@@ -23,6 +23,7 @@ pnpm test        # must pass
 pnpm build       # must pass
 pnpm check       # all four
 pnpm test:package   # pack and install the tarball outside the repository (network)
+pnpm pack:tgz       # check, then build git2jira-ai-<version>.tgz in the repository root
 ```
 
 Run `pnpm check` before declaring work done. Use `GIT2JIRA_CONFIG_DIR=<tmp>` when running the CLI

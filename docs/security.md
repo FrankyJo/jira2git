@@ -78,6 +78,13 @@
 20. **Model output is checked against Git.** Reports naming files outside the change set, another issue,
     language, or snapshot, or claiming tests, deployments, or approvals without evidence are rejected.
 
+21. **Release notes follow the same boundary.** `/jira-release-note` pre-approves only read-only
+    `release-note` subcommands (`prepare`, `request`, `submit`, `show`, `pending`, `copy`, `export`);
+    `confirm`, `publish`, `record-result`, `reconcile`, and `cancel` always prompt. `prepare` writes only
+    its own draft below the Git common directory, and `export` has no output option. Publication is
+    bound to the digest of the exact text, the issue, the site, and the `HEAD` commit; release notes never
+    move report checkpoints, and their marker never matches the report marker.
+
 ## File permissions
 
 The global config directory is created with mode `0700` and files with `0600` (POSIX). Writes are atomic

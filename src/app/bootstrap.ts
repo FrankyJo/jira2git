@@ -27,6 +27,8 @@ import { GitIncrementalDiffEngine } from '../snapshots/diff';
 import { GitSnapshotEngine } from '../snapshots/engine';
 import { SpawnProcessRunner } from '../core/process';
 import { DraftStore } from '../delivery/draft';
+import { ReleaseNoteStore } from '../release-note/draft';
+import { ReleaseNoteService } from '../release-note/service';
 import { ReportDeliveryService, openDraftRefs } from '../delivery/service';
 import { ClaudeCliRegistry } from '../mcp/claude-code';
 import { McpVerificationStore } from '../mcp/setup';
@@ -36,6 +38,8 @@ import { VERSION } from '../core/version';
 import { SequentialDiagnosticsRunner } from '../diagnostics/checks';
 import { EnvironmentProbe } from '../diagnostics/environment';
 import { FileSkillInstaller } from '../skill/installer';
+import { SkillSuiteInstaller } from '../skill/suite';
+import { SKILLS, type SkillSpec } from '../skill/types';
 import { SkillPackageError, findSkillAssets, loadSkillPackage } from '../skill/package';
 import { ServiceContainer } from './container';
 
@@ -126,6 +130,21 @@ export function createDefaultContainer(): ServiceContainer {
           labels: c.resolve('labelCatalog'),
         }),
     )
+    .register('releaseNoteStore', () => new ReleaseNoteStore())
+    .register(
+      'releaseNoteService',
+      (c) =>
+        new ReleaseNoteService({
+          lifecycle: c.resolve('publicationLifecycle'),
+          locator: c.resolve('repositoryLocator'),
+          baseResolver: c.resolve('baseResolver'),
+          diff: c.resolve('diffEngine'),
+          refs: c.resolve('gitRefs'),
+          store: c.resolve('lineageStore'),
+          notes: c.resolve('releaseNoteStore'),
+          reports: c.resolve('draftStore'),
+        }),
+    )
     .register('claudeMcpRegistry', (c) => new ClaudeCliRegistry(c.resolve('processRunner')))
     .register(
       'reportGenerator',
@@ -139,24 +158,28 @@ export function createDefaultContainer(): ServiceContainer {
           path.join(globalConfigDir(c.resolve('pathEnvironment')), 'mcp-verification.json'),
         ),
     )
-    .register(
-      'skillInstaller',
-      (c) =>
+    .register('skillInstaller', (c) => {
+      const claudeHome = claudeHomeDir(c.resolve('pathEnvironment'));
+      const part = (spec: SkillSpec) =>
         new FileSkillInstaller({
-          claudeHome: claudeHomeDir(c.resolve('pathEnvironment')),
+          claudeHome,
+          spec,
           loadPackage: () => {
             const assets = findSkillAssets(path.dirname(fileURLToPath(import.meta.url)));
             if (!assets) {
               return Promise.reject(
                 new SkillPackageError(
-                  'The /jira-report Skill package is missing from this installation.',
+                  `The /${spec.skill} Skill package is missing from this installation.`,
                 ),
               );
             }
-            return loadSkillPackage(assets, VERSION);
+            return loadSkillPackage(assets, VERSION, spec);
           },
-        }),
-    )
+        });
+      const [primary, ...rest] = SKILLS.map(part);
+      if (!primary) throw new SkillPackageError('No Skill is defined.');
+      return new SkillSuiteInstaller([primary, ...rest]);
+    })
     .register(
       'environmentProbe',
       (c) =>

@@ -32,10 +32,10 @@ describe('ServiceContainer', () => {
 });
 
 describe('default container', () => {
-  it('registers every service of Phases 0 to 5', () => {
+  it('registers every service of every phase', () => {
     const container = createDefaultContainer();
-    for (const [name, phase] of Object.entries(SERVICE_PHASES)) {
-      expect(container.has(name as keyof typeof SERVICE_PHASES), name).toBe(phase <= 5);
+    for (const name of Object.keys(SERVICE_PHASES)) {
+      expect(container.has(name as keyof typeof SERVICE_PHASES), name).toBe(true);
     }
   });
 });

@@ -35,12 +35,40 @@ export interface AdfBulletList {
   content: AdfListItem[];
 }
 
+export interface AdfOrderedList {
+  type: 'orderedList';
+  content: AdfListItem[];
+}
+
 export interface AdfRule {
   type: 'rule';
 }
 
+export interface AdfTableCell {
+  type: 'tableHeader' | 'tableCell';
+  content: AdfParagraph[];
+}
+
+export interface AdfTableRow {
+  type: 'tableRow';
+  content: AdfTableCell[];
+}
+
+export interface AdfTable {
+  type: 'table';
+  content: AdfTableRow[];
+}
+
+/** Highlighted box; used by release notes for UI messages and notes. */
+export interface AdfPanel {
+  type: 'panel';
+  attrs: { panelType: 'info' | 'note' };
+  content: AdfParagraph[];
+}
+
 export type AdfInline = AdfText | { type: 'hardBreak' };
-export type AdfBlock = AdfParagraph | AdfHeading | AdfBulletList | AdfRule;
+export type AdfBlock =
+  AdfParagraph | AdfHeading | AdfBulletList | AdfOrderedList | AdfTable | AdfPanel | AdfRule;
 
 export interface AdfDocument {
   type: 'doc';

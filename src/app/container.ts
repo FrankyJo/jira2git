@@ -10,6 +10,8 @@ import type { EnvironmentProbe } from '../diagnostics/environment';
 import type { DiagnosticsRunner } from '../diagnostics/types';
 import type { DraftStore } from '../delivery/draft';
 import type { ReportDeliveryService } from '../delivery/service';
+import type { ReleaseNoteStore } from '../release-note/draft';
+import type { ReleaseNoteService } from '../release-note/service';
 import type { ProcessRunner } from '../core/process';
 import type { ClaudeMcpRegistry } from '../mcp/claude-code';
 import type { McpVerificationStore } from '../mcp/setup';
@@ -50,6 +52,8 @@ export interface ServiceRegistry {
   processRunner: ProcessRunner;
   draftStore: DraftStore;
   deliveryService: ReportDeliveryService;
+  releaseNoteStore: ReleaseNoteStore;
+  releaseNoteService: ReleaseNoteService;
   claudeMcpRegistry: ClaudeMcpRegistry;
   mcpVerificationStore: McpVerificationStore;
   skillInstaller: SkillInstaller;
@@ -82,6 +86,8 @@ export const SERVICE_PHASES: Readonly<Record<ServiceName, Phase>> = {
   processRunner: 2,
   draftStore: 2,
   deliveryService: 2,
+  releaseNoteStore: 7,
+  releaseNoteService: 7,
   claudeMcpRegistry: 2,
   mcpVerificationStore: 2,
   reportGenerator: 3,

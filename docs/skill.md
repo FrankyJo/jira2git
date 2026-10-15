@@ -6,6 +6,10 @@ Code: `skill/` (the package: `jira-report/SKILL.md`, `jira-report/reference/*.md
 commands. Tests: `tests/skill` (a simulated Claude Code session drives the real CLI, real Git, and the
 shipped `SKILL.md` permission rules; no real Claude Code, Jira, or MCP server).
 
+The same installation also provides `/jira-release-note` (`skill/jira-release-note/`,
+`agents/jira-release-writer.md`, Phase 7); see [release-notes.md](release-notes.md). Both Skills are
+installed, checked, and removed together (`src/skill/suite.ts`).
+
 ## Installation
 
 ```sh

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Git2JiraError } from '../core/errors';
 import { FrontmatterError, parseFrontmatter, stringList } from './frontmatter';
 import { checkAllowedTools } from './permissions';
-import { AGENT_NAME, SKILL_NAME } from './types';
+import { REPORT_SKILL, SKILL_NAME, type SkillSpec } from './types';
 
 /**
  * The Skill package shipped with the CLI (`skill/` in the npm package):
@@ -17,6 +17,8 @@ import { AGENT_NAME, SKILL_NAME } from './types';
  * user's other agents, and the Skill's manifest records it.
  */
 export interface SkillPackage {
+  /** Which Skill this is; `/jira-report` when absent. */
+  spec?: SkillSpec;
   version: string;
   /** Skill directory files by relative POSIX path. */
   skillFiles: ReadonlyMap<string, Buffer>;
@@ -50,8 +52,12 @@ export function findSkillAssets(fromDir: string): string | undefined {
 
 export class SkillPackageError extends Git2JiraError {}
 
-export async function loadSkillPackage(assetsDir: string, version: string): Promise<SkillPackage> {
-  const root = path.join(assetsDir, SKILL_NAME);
+export async function loadSkillPackage(
+  assetsDir: string,
+  version: string,
+  spec: SkillSpec = REPORT_SKILL,
+): Promise<SkillPackage> {
+  const root = path.join(assetsDir, spec.skill);
   const files = new Map<string, Buffer>();
   const walk = async (dir: string): Promise<void> => {
     for (const entry of (await readdir(dir)).sort()) {
@@ -77,14 +83,14 @@ export async function loadSkillPackage(assetsDir: string, version: string): Prom
       `The Skill package is missing or unreadable at ${root}: ${(error as Error).message}`,
     );
   }
-  const agent = await readFile(path.join(assetsDir, 'agents', `${AGENT_NAME}.md`)).catch(() => {
-    throw new SkillPackageError(`The ${AGENT_NAME} subagent is missing from the Skill package.`);
+  const agent = await readFile(path.join(assetsDir, 'agents', `${spec.agent}.md`)).catch(() => {
+    throw new SkillPackageError(`The ${spec.agent} subagent is missing from the Skill package.`);
   });
-  return { version, skillFiles: files, agent };
+  return { spec, version, skillFiles: files, agent };
 }
 
 /** Problems with a `SKILL.md`: discovery fields and the approval boundary. */
-export function checkSkillFile(content: string): string[] {
+export function checkSkillFile(content: string, spec: SkillSpec = REPORT_SKILL): string[] {
   let parsed;
   try {
     parsed = parseFrontmatter(content);
@@ -93,7 +99,7 @@ export function checkSkillFile(content: string): string[] {
   }
   const fm = parsed.frontmatter;
   const problems: string[] = [];
-  if (fm.name !== SKILL_NAME) problems.push(`SKILL.md: name must be "${SKILL_NAME}"`);
+  if (fm.name !== spec.skill) problems.push(`SKILL.md: name must be "${spec.skill}"`);
   if (typeof fm.description !== 'string' || fm.description.trim() === '') {
     problems.push('SKILL.md: description is missing');
   } else if (fm.description.length > DESCRIPTION_LIMIT) {
@@ -114,27 +120,27 @@ export function checkSkillFile(content: string): string[] {
 }
 
 /** Problems with the subagent: it must be read-only and unable to publish. */
-export function checkAgentFile(content: string): string[] {
+export function checkAgentFile(content: string, spec: SkillSpec = REPORT_SKILL): string[] {
   let parsed;
   try {
     parsed = parseFrontmatter(content);
   } catch (error) {
     return [
-      `${AGENT_NAME}.md: ${error instanceof FrontmatterError ? error.message : String(error)}`,
+      `${spec.agent}.md: ${error instanceof FrontmatterError ? error.message : String(error)}`,
     ];
   }
   const fm = parsed.frontmatter;
   const problems: string[] = [];
-  if (fm.name !== AGENT_NAME) problems.push(`${AGENT_NAME}.md: name must be "${AGENT_NAME}"`);
+  if (fm.name !== spec.agent) problems.push(`${spec.agent}.md: name must be "${spec.agent}"`);
   if (typeof fm.description !== 'string' || fm.description.trim() === '') {
-    problems.push(`${AGENT_NAME}.md: description is missing`);
+    problems.push(`${spec.agent}.md: description is missing`);
   }
   // Without an explicit list a subagent inherits every tool, including MCP and Bash.
   const tools = stringList(fm.tools);
-  if (tools.length === 0) problems.push(`${AGENT_NAME}.md: tools must be listed explicitly`);
+  if (tools.length === 0) problems.push(`${spec.agent}.md: tools must be listed explicitly`);
   for (const tool of tools) {
     if (!READ_ONLY_AGENT_TOOLS.has(tool)) {
-      problems.push(`${AGENT_NAME}.md: tool "${tool}" is not read-only`);
+      problems.push(`${spec.agent}.md: tool "${tool}" is not read-only`);
     }
   }
   return problems;
@@ -143,8 +149,11 @@ export function checkAgentFile(content: string): string[] {
 /** Problems with the package as shipped. Empty for a correct build. */
 export function checkSkillPackage(pkg: SkillPackage): string[] {
   const entry = pkg.skillFiles.get(SKILL_ENTRY);
-  const problems = entry ? checkSkillFile(entry.toString('utf8')) : [`${SKILL_ENTRY} is missing`];
-  problems.push(...checkAgentFile(pkg.agent.toString('utf8')));
+  const spec = pkg.spec ?? REPORT_SKILL;
+  const problems = entry
+    ? checkSkillFile(entry.toString('utf8'), spec)
+    : [`${SKILL_ENTRY} is missing`];
+  problems.push(...checkAgentFile(pkg.agent.toString('utf8'), spec));
   const body = entry?.toString('utf8') ?? '';
   for (const link of body.matchAll(/\]\((reference\/[^)#\s]+)/g)) {
     if (link[1] !== undefined && !pkg.skillFiles.has(link[1])) {

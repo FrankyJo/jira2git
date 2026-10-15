@@ -35,8 +35,14 @@ const OPTIONS: Readonly<Record<string, keyof SkillArguments>> = {
 };
 
 export const SKILL_USAGE = '/jira-report [--language en|uk] [--mode manual|mcp] [--issue KEY-123]';
+export const RELEASE_NOTE_SKILL_USAGE =
+  '/jira-release-note [--mode manual|mcp] [--issue KEY-123] [--language uk|en]';
 
-export function parseSkillArguments(raw: string | undefined): SkillArguments {
+export function parseSkillArguments(
+  raw: string | undefined,
+  usageLine: string = SKILL_USAGE,
+): SkillArguments {
+  const usage = (message: string) => new UsageError(`${message} Usage: ${usageLine}`);
   const text = (raw ?? '').trim();
   // Claude Code leaves the placeholder in place when it is not substituted.
   if (text === '' || text === '$ARGUMENTS') return {};
@@ -85,7 +91,7 @@ export function parseSkillArguments(raw: string | undefined): SkillArguments {
     const mode = values.mode.toLowerCase();
     if (mode === 'api-token') {
       throw usage(
-        'API-token mode publishes from the standalone CLI ("git2jira report --mode api-token"), not from /jira-report. ' +
+        'API-token mode publishes from the standalone CLI ("git2jira report --mode api-token"), not from the Skill. ' +
           'Use --mode manual or --mode mcp.',
       );
     }
@@ -114,8 +120,4 @@ function splitOnce(token: string, separator: string): [string, string | undefine
 
 function printable(value: string): string {
   return value.replace(/[^\x20-\x7e]/g, '?').slice(0, 60);
-}
-
-function usage(message: string): UsageError {
-  return new UsageError(`${message} Usage: ${SKILL_USAGE}`);
 }

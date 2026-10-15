@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { latestCheckpoint } from '../../checkpoints/types';
 import { includeUncommittedSetting } from '../../config/settings';
 import { Git2JiraError, UsageError } from '../../core/errors';
@@ -11,7 +11,9 @@ import { PLACEHOLDER_SITE_URL, resolveDeliverySite } from '../../delivery/site';
 import { jiraSiteFromUrl } from '../../checkpoints/site';
 import { resolveLanguage } from '../../localization/resolve';
 import { ATLASSIAN_TOOLS, DEFAULT_MCP_SERVER_NAME, claudeToolPrefix } from '../../mcp/tools';
-import { SKILL_USAGE, parseSkillArguments } from '../../skill/args';
+import { RELEASE_NOTE_SKILL_USAGE, SKILL_USAGE, parseSkillArguments } from '../../skill/args';
+import { isOpenReleaseNote } from '../../release-note/draft';
+import { DEFAULT_RELEASE_NOTE_LANGUAGE, noteSummary } from './release-note';
 import type { SkillInstallState } from '../../skill/types';
 import { println, type CliContext } from '../context';
 import { configs, draftSummary } from './report';
@@ -29,6 +31,16 @@ export function createSkillCommand(ctx: CliContext): Command {
     'Install and check the /jira-report Claude Code Skill.',
   );
   const installer = () => ctx.container.resolve('skillInstaller');
+  const skillNames = () =>
+    installer()
+      .locations.map((l) => `/${path.basename(l.skillDir)}`)
+      .join(', ');
+  const printLocations = () => {
+    for (const { skillDir, agentPath } of installer().locations) {
+      println(ctx.stdout, `  Skill:    ${skillDir}`);
+      println(ctx.stdout, `  Subagent: ${agentPath}`);
+    }
+  };
 
   command
     .command('install')
@@ -41,20 +53,21 @@ export function createSkillCommand(ctx: CliContext): Command {
         println(ctx.stdout, JSON.stringify(result, null, 2));
         return;
       }
-      const { skillDir, agentPath } = result.state;
       const verb = {
         installed: 'Installed',
         upgraded: 'Upgraded',
         repaired: 'Repaired',
         unchanged: 'Already up to date:',
       }[result.action];
-      println(ctx.stdout, `${verb} /jira-report ${describeVersion(result.state)}`);
-      println(ctx.stdout, `  Skill:    ${skillDir}`);
-      println(ctx.stdout, `  Subagent: ${agentPath}`);
+      println(ctx.stdout, `${verb} ${skillNames()} ${describeVersion(result.state)}`);
+      printLocations();
       for (const file of result.keptFiles) {
         println(ctx.stdout, `  Kept your file: ${file}`);
       }
-      println(ctx.stdout, 'Start Claude Code in any Git repository and run /jira-report.');
+      println(
+        ctx.stdout,
+        'Start Claude Code in any Git repository and run /jira-report (or /jira-release-note).',
+      );
     });
 
   command
@@ -64,10 +77,10 @@ export function createSkillCommand(ctx: CliContext): Command {
     .action(async (options: { force?: boolean }) => {
       const result = await installer().uninstall({ force: options.force === true });
       if (!result.removed) {
-        println(ctx.stdout, '/jira-report is not installed. Nothing was removed.');
+        println(ctx.stdout, `${skillNames()}: not installed. Nothing was removed.`);
         return;
       }
-      println(ctx.stdout, 'Removed /jira-report.');
+      println(ctx.stdout, `Removed ${skillNames()}.`);
       for (const file of result.keptFiles) {
         println(ctx.stdout, `  Kept (not installed by Git2Jira): ${file}`);
       }
@@ -83,9 +96,8 @@ export function createSkillCommand(ctx: CliContext): Command {
         println(ctx.stdout, JSON.stringify({ cliVersion: VERSION, ...state }, null, 2));
         return;
       }
-      println(ctx.stdout, `/jira-report: ${describeState(state)}`);
-      println(ctx.stdout, `  Skill:    ${state.skillDir}`);
-      println(ctx.stdout, `  Subagent: ${state.agentPath}`);
+      println(ctx.stdout, `${skillNames()}: ${describeState(state)}`);
+      printLocations();
     });
 
   command
@@ -113,7 +125,7 @@ export function createSkillCommand(ctx: CliContext): Command {
       if (options.json) {
         println(ctx.stdout, JSON.stringify(result, null, 2));
       } else {
-        println(ctx.stdout, `/jira-report: ${describeState(result.state)}`);
+        println(ctx.stdout, `${skillNames()}: ${describeState(result.state)}`);
         for (const problem of result.problems) println(ctx.stdout, `  Problem: ${problem}`);
         for (const warning of result.warnings) println(ctx.stdout, `  Warning: ${warning}`);
         if (result.ok && result.warnings.length === 0) println(ctx.stdout, '  All checks passed.');
@@ -127,19 +139,37 @@ export function createSkillCommand(ctx: CliContext): Command {
     .description(
       'Used by /jira-report: validate its arguments and resolve the run (read-only, JSON).',
     )
-    .option('--args <text>', `the /jira-report arguments, as typed (${SKILL_USAGE})`, '')
+    .option('--args <text>', `the Skill arguments, as typed (${SKILL_USAGE})`, '')
+    .addOption(
+      new Option('--skill <name>', 'which Skill is asking')
+        .choices(['jira-report', 'jira-release-note'] as const)
+        .default('jira-report'),
+    )
     .option('--json', 'print machine-readable JSON (always JSON)')
-    .action(async (options: { args: string }) => {
-      println(ctx.stdout, JSON.stringify(await skillContext(ctx, options.args), null, 2));
+    .action(async (options: { args: string; skill: 'jira-report' | 'jira-release-note' }) => {
+      println(
+        ctx.stdout,
+        JSON.stringify(await skillContext(ctx, options.args, options.skill), null, 2),
+      );
     });
 
   return command;
 }
 
-async function skillContext(ctx: CliContext, rawArgs: string) {
-  const args = parseSkillArguments(rawArgs);
+async function skillContext(
+  ctx: CliContext,
+  rawArgs: string,
+  skillName: 'jira-report' | 'jira-release-note',
+) {
+  const releaseNote = skillName === 'jira-release-note';
+  const args = parseSkillArguments(rawArgs, releaseNote ? RELEASE_NOTE_SKILL_USAGE : SKILL_USAGE);
   const { repoConfig, globalConfig } = await configs(ctx);
-  const mode = resolveDeliveryMode({ override: args.mode, repoConfig, globalConfig });
+  const resolved = resolveDeliveryMode({ override: args.mode, repoConfig, globalConfig });
+  // Release notes have no API-token delivery: they fall back to manual, as "release-note prepare" does.
+  const mode =
+    releaseNote && resolved.mode === 'api-token'
+      ? { mode: 'manual' as const, source: 'default' as const }
+      : resolved;
   if (mode.mode === 'api-token') {
     throw new UsageError(
       `jira.mode is "api-token" (${mode.source} configuration). /jira-report delivers in manual or MCP mode: ` +
@@ -147,7 +177,13 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
         'terminal with "git2jira report --mode api-token".',
     );
   }
-  const language = resolveLanguage({ override: args.language, repoConfig, globalConfig });
+  // Release notes are Ukrainian unless the user asks otherwise in this run.
+  const language = releaseNote
+    ? {
+        language: args.language ?? DEFAULT_RELEASE_NOTE_LANGUAGE,
+        source: args.language ? 'override' : 'default',
+      }
+    : resolveLanguage({ override: args.language, repoConfig, globalConfig });
   const lifecycle = ctx.container.resolve('publicationLifecycle');
   const identity = await lifecycle.identify({
     cwd: ctx.cwd,
@@ -194,9 +230,13 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
     }
   }
 
-  const pending = (await ctx.container.resolve('deliveryService').list(ctx.cwd))
-    .filter((d) => isOpen(d) && d.issueKey === issueKey)
-    .map(draftSummary);
+  const pending = releaseNote
+    ? (await ctx.container.resolve('releaseNoteService').list(ctx.cwd))
+        .filter((d) => isOpenReleaseNote(d) && d.issueKey === issueKey)
+        .map(noteSummary)
+    : (await ctx.container.resolve('deliveryService').list(ctx.cwd))
+        .filter((d) => isOpen(d) && d.issueKey === issueKey)
+        .map(draftSummary);
 
   const server = globalConfig.mcp?.server ?? DEFAULT_MCP_SERVER_NAME;
   const prefix = claudeToolPrefix(server);
@@ -206,7 +246,7 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
   // Reports confirmed before jira.site was set live under the placeholder lineage. A report
   // for a real site would start again at #1 with everything since the branch began.
   const placeholderId = jiraSiteFromUrl(PLACEHOLDER_SITE_URL).id;
-  if (!site.placeholder || mode.mode === 'mcp') {
+  if (!releaseNote && (!site.placeholder || mode.mode === 'mcp')) {
     const earlier = identity.historySites.find((s) => s.id === placeholderId);
     if (earlier) {
       const journal = await ctx.container
@@ -230,7 +270,7 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
     skill = { ...stateSummary(state), matchesCli: state.state === 'installed' };
     if (state.state !== 'installed') {
       warnings.push(
-        `/jira-report installation: ${describeState(state)}. See "git2jira skill status".`,
+        `/${skillName} installation: ${describeState(state)}. See "git2jira skill status".`,
       );
     }
   } catch (error) {
@@ -239,6 +279,7 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
 
   return {
     result: 'context',
+    skillName,
     cli: { version: VERSION },
     skill,
     arguments: {
@@ -252,7 +293,7 @@ async function skillContext(ctx: CliContext, rawArgs: string) {
     mode: { value: mode.mode, source: mode.source },
     language: { value: language.language, source: language.source },
     site: { url: site.url, placeholder: site.placeholder, source: site.source },
-    checkpoint,
+    checkpoint: releaseNote ? null : checkpoint,
     pending,
     preferences: {
       includeUncommitted: includeUncommittedSetting(repoConfig, globalConfig),

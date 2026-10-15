@@ -10,6 +10,7 @@
 | 4     | Claude Code Skill `/jira-report`                        | Done   |
 | 5     | Interactive installer, configuration, and npm packaging | Done   |
 | 6     | Final QA, security audit, and release preparation       | Done   |
+| 7     | Release notes `/jira-release-note`                      | Done   |
 
 ## Phase 0: Foundation (done)
 
@@ -134,3 +135,17 @@
 - Still open, needs real environments: Atlassian Rovo MCP against a real (corporate) Jira site, the
   API-token mode against real Jira Cloud, interactive checks in real Claude Code
   ([skill-verification.md](skill-verification.md)). 1.0.0 follows those.
+
+## Phase 7: Release notes (done)
+
+- `/jira-release-note [--mode manual|mcp] [--issue KEY] [--language uk|en]`: a user-facing release note
+  (Ukrainian by default) for the whole issue (merge-base → `HEAD`, committed work only), delivered as a
+  new Jira comment (manual copy or MCP).
+- `git2jira release-note prepare|request|submit|show|pending|copy|export|confirm|publish|record-result|reconcile|cancel`;
+  own draft store and marker; never creates refs or moves a checkpoint.
+- `ReleaseNoteContentSchema` with per-block `source` (`code`, `jira`, `user`, `inferred`) and evidence;
+  validation against the change set; ADF ordered lists, tables, and panels; screenshot placeholders.
+- `skill context --skill jira-release-note`; `SkillSuiteInstaller` for both Skills; read-only
+  `jira-release-writer` subagent.
+- Not verified yet in a real Claude Code session or against the real Rovo MCP server.
+- See [release-notes.md](release-notes.md).

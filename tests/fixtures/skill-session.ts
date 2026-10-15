@@ -28,8 +28,8 @@ const NO_CREDENTIALS: CredentialStore = new Proxy({} as CredentialStore, {
 const assets = must(findSkillAssets(path.dirname(fileURLToPath(import.meta.url))));
 
 /** `allowed-tools` of the shipped SKILL.md: what the Skill runs without a prompt. */
-export async function shippedAllowedTools(): Promise<string[]> {
-  const skill = await readFile(path.join(assets, 'jira-report', 'SKILL.md'), 'utf8');
+export async function shippedAllowedTools(name = 'jira-report'): Promise<string[]> {
+  const skill = await readFile(path.join(assets, name, 'SKILL.md'), 'utf8');
   return stringList(parseFrontmatter(skill).frontmatter['allowed-tools']);
 }
 
@@ -55,9 +55,11 @@ export interface BashResult {
  *
  * No real Claude Code, Jira, or MCP server is involved. Git and the CLI are real.
  */
-export async function createSkillSession(options: { repo?: GitRepo } = {}) {
+export async function createSkillSession(
+  options: { repo?: GitRepo; skill?: 'jira-report' | 'jira-release-note' } = {},
+) {
   const repo = options.repo ?? (await GitRepo.create({ branch: 'feature/LSND-1234-profile' }));
-  const allowed = await shippedAllowedTools();
+  const allowed = await shippedAllowedTools(options.skill);
   const configStore = new FileConfigStore({
     globalPath: path.join(repo.sandbox, 'cfg', 'config.json'),
     repoPath: repoConfigPath,
