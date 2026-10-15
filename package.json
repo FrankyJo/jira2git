@@ -1,6 +1,6 @@
 {
   "name": "git2jira-ai",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Turn Git changes into incremental, professional Jira implementation reports using Claude Code.",
   "keywords": [
     "jira",
