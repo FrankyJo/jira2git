@@ -3,7 +3,7 @@
 All notable changes to Git2Jira AI. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/). Nothing has been published to npm yet.
 
-## [Unreleased]
+## [1.0.2] — 2026-10-15
 
 ### Added
 
